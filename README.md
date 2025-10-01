@@ -1,2 +1,2 @@
-# notification-servicd
+# notification-service
 Management notification

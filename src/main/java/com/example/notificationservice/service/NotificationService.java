@@ -60,7 +60,7 @@ public class NotificationService {
 
         // Create notification record and send through appropriate channels
         for (NotificationChannel channel : channels) {
-            if (shouldSendToChannel(preference, channel)) {
+            if (shouldSendToChannel(preference, channel, eventType)) {
                 log.info("Sending notification via channel: {}", channel);
 
                 // Get channel-specific template
@@ -160,7 +160,7 @@ public class NotificationService {
 
                 // Send through requested channels
                 for (NotificationChannel channel : request.getChannels()) {
-                    if (shouldSendToChannel(preference, channel)) {
+                    if (shouldSendToChannel(preference, channel, request.getType())) {
                         Notification notification = Notification.builder()
                                 .recipientId(userId)
                                 .recipientEmail(email)
@@ -309,7 +309,7 @@ public class NotificationService {
     }
 
     private boolean shouldSendToChannel(Optional<NotificationPreference> preference,
-            NotificationChannel channel) {
+            NotificationChannel channel, String eventType) {
         if (preference.isEmpty()) {
             log.debug("No preferences found, defaulting to enabled for channel: {}", channel);
             return true;
@@ -317,18 +317,37 @@ public class NotificationService {
 
         NotificationPreference pref = preference.get();
 
-        // Check global notifications toggle first
-        if (pref.getNotificationsEnabled() != null && !pref.getNotificationsEnabled()) {
+        // 1. Check global master switch
+        if (Boolean.FALSE.equals(pref.getNotificationsEnabled())) {
             log.debug("Global notifications disabled for user");
             return false;
         }
 
+        // 2. Check specific category/type preferences
+        if (pref.getCategories() != null && pref.getCategories().containsKey(eventType)) {
+            Map<String, Boolean> typeSettings = pref.getCategories().get(eventType);
+
+            // Check specific channel setting
+            String channelKey = switch (channel) {
+                case EMAIL -> "emailEnabled";
+                case PUSH -> "pushEnabled";
+            };
+
+            if (typeSettings != null && typeSettings.containsKey(channelKey)) {
+                boolean specificEnabled = typeSettings.get(channelKey);
+                log.debug("Found specific preference for type '{}', channel '{}': {}",
+                        eventType, channel, specificEnabled);
+                return specificEnabled;
+            }
+        }
+
+        // 3. Fallback to global channel settings
         boolean enabled = switch (channel) {
-            case EMAIL -> pref.getEmailEnabled();
-            case PUSH -> pref.getPushEnabled();
+            case EMAIL -> Boolean.TRUE.equals(pref.getEmailEnabled());
+            case PUSH -> Boolean.TRUE.equals(pref.getPushEnabled());
         };
 
-        log.debug("Channel {} enabled: {}", channel, enabled);
+        log.debug("Using global channel setting for '{}': {}", channel, enabled);
         return enabled;
     }
 

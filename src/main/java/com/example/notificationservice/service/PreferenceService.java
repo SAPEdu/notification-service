@@ -32,7 +32,6 @@ public class PreferenceService {
                 .notificationsEnabled(dto.getNotificationsEnabled())
                 .emailEnabled(dto.getEmailEnabled())
                 .pushEnabled(dto.getPushEnabled())
-                .emailFrequency(dto.getEmailFrequency())
                 .categories(dto.getNotificationTypes())
                 .build();
 
@@ -50,7 +49,6 @@ public class PreferenceService {
         preference.setNotificationsEnabled(dto.getNotificationsEnabled());
         preference.setEmailEnabled(dto.getEmailEnabled());
         preference.setPushEnabled(dto.getPushEnabled());
-        preference.setEmailFrequency(dto.getEmailFrequency());
         preference.setCategories(dto.getNotificationTypes());
 
         NotificationPreference saved = preferenceRepository.save(preference);
@@ -75,7 +73,6 @@ public class PreferenceService {
                 .notificationsEnabled(entity.getNotificationsEnabled())
                 .emailEnabled(entity.getEmailEnabled())
                 .pushEnabled(entity.getPushEnabled())
-                .emailFrequency(entity.getEmailFrequency())
                 .notificationTypes(entity.getCategories())
                 .build();
     }

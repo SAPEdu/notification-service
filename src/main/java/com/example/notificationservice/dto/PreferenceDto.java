@@ -1,6 +1,5 @@
 package com.example.notificationservice.dto;
 
-import com.example.notificationservice.enums.EmailFrequency;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -32,9 +31,6 @@ public class PreferenceDto {
 
     @Builder.Default
     private Boolean pushEnabled = true;
-
-    @Builder.Default
-    private EmailFrequency emailFrequency = EmailFrequency.IMMEDIATE;
 
     /**
      * Per-notification-type settings

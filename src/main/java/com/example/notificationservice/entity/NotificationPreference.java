@@ -1,6 +1,5 @@
 package com.example.notificationservice.entity;
 
-import com.example.notificationservice.enums.EmailFrequency;
 import com.vladmihalcea.hibernate.type.json.JsonType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -39,11 +38,6 @@ public class NotificationPreference {
     @Column(name = "push_enabled")
     @Builder.Default
     private Boolean pushEnabled = true;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "email_frequency", length = 20)
-    @Builder.Default
-    private EmailFrequency emailFrequency = EmailFrequency.IMMEDIATE;
 
     /**
      * Per-notification-type settings stored as JSONB

@@ -92,8 +92,7 @@ public class RedisStreamListener {
                     .read(
                             Consumer.from(consumerGroup, consumerName),
                             StreamReadOptions.empty().count(10).block(Duration.ofSeconds(1)),
-                            StreamOffset.create(streamKey, ReadOffset.lastConsumed())
-                    );
+                            StreamOffset.create(streamKey, ReadOffset.lastConsumed()));
 
             if (messages != null && !messages.isEmpty()) {
                 for (MapRecord<String, Object, Object> message : messages) {
@@ -168,8 +167,7 @@ public class RedisStreamListener {
                     event.getUserId(),
                     event.getEmail(),
                     data,
-                    List.of(NotificationChannel.EMAIL)
-            );
+                    List.of(NotificationChannel.EMAIL));
         } catch (Exception e) {
             log.error("Failed to handle user event: {}", e.getMessage(), e);
         }
@@ -221,8 +219,7 @@ public class RedisStreamListener {
                     event.getUserId(),
                     event.getEmail(),
                     data,
-                    List.of(NotificationChannel.EMAIL)
-            );
+                    List.of(NotificationChannel.EMAIL));
         } catch (Exception e) {
             log.error("Failed to handle session completed event: {}", e.getMessage(), e);
         }
@@ -282,8 +279,7 @@ public class RedisStreamListener {
                             user.getUserId(),
                             user.getEmail(),
                             userData,
-                            List.of(NotificationChannel.SSE, NotificationChannel.EMAIL)
-                    );
+                            List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL));
 
                     log.info("✅ Notification sent successfully to user: {}", user.getUserId());
                 } catch (Exception e) {
@@ -312,7 +308,8 @@ public class RedisStreamListener {
 
             // Check if key contains array notation like "assignedUsers.[0].userId"
             if (key.contains(".[") && key.contains("].")) {
-                // Parse: "assignedUsers.[0].userId" -> arrayName="assignedUsers", index=0, field="userId"
+                // Parse: "assignedUsers.[0].userId" -> arrayName="assignedUsers", index=0,
+                // field="userId"
                 String[] parts = key.split("\\.");
                 String arrayName = parts[0]; // "assignedUsers"
                 String indexPart = parts[1]; // "[0]"
@@ -344,6 +341,7 @@ public class RedisStreamListener {
 
         return result;
     }
+
     private void handleProctoringEvent(Map<Object, Object> value) {
         try {
             Map<String, Object> cleanedValue = cleanMap(value);
@@ -355,18 +353,18 @@ public class RedisStreamListener {
             data.put("username", event.getUsername());
             data.put("sessionId", event.getSessionId());
             data.put("violationType", event.getViolationType());
-            data.put("timestamp", event.getTimestamp() != null ? event.getTimestamp().toString() : Instant.now().toString());
+            data.put("timestamp",
+                    event.getTimestamp() != null ? event.getTimestamp().toString() : Instant.now().toString());
             data.put("severity", event.getSeverity());
 
-            if (event.getProctorIds() != null && !event.getProctorIds().isEmpty()) {  // ← Added null check
+            if (event.getProctorIds() != null && !event.getProctorIds().isEmpty()) { // ← Added null check
                 for (Integer proctorId : event.getProctorIds()) {
                     notificationService.processNotification(
                             "proctoring.violation",
                             proctorId,
                             null,
                             data,
-                            List.of(NotificationChannel.SSE, NotificationChannel.EMAIL)
-                    );
+                            List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL));
                 }
             } else {
                 log.warn("No proctor IDs found for proctoring violation event");

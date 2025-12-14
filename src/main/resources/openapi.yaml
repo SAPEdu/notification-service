@@ -1,0 +1,1403 @@
+openapi: 3.0.3
+info:
+  title: Notification Service API
+  description: |
+    # Notification Service API Documentation
+    
+    A comprehensive notification service that supports multiple delivery channels (Email, SSE, Push) 
+    with template management and user preferences.
+    
+    ## Features
+    - 📧 **Email Notifications** - Send templated emails via SMTP
+    - 🔔 **Real-time SSE** - Server-Sent Events for instant notifications
+    - 📱 **Push Notifications** - (Coming soon)
+    - 🎨 **Template Management** - Dynamic templates with variable substitution
+    - ⚙️ **User Preferences** - Customizable notification settings
+    - 🔄 **Event-Driven** - Redis Streams for reliable event processing
+    - 🔁 **Retry Mechanism** - Automatic retry for failed notifications
+    
+    ## Authentication
+    All endpoints (except health check) require JWT Bearer token authentication from Casdoor OAuth2.
+    
+    ## Base URL
+    - **Development**: `http://localhost:8082/notification-service`
+    - **Production**: `https://api.yourcompany.com/notification-service`
+
+  version: 2.0.0
+  contact:
+    name: Notification Service Team
+    email: support@examplatform.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8082/notification-service
+    description: Development server
+  - url: https://api.yourcompany.com/notification-service
+    description: Production server
+
+tags:
+  - name: Health
+    description: Service health and status endpoints
+  - name: Authentication
+    description: Authentication testing endpoints
+  - name: Templates
+    description: Notification template management (Admin only)
+  - name: User Notifications
+    description: User notification inbox - history, read status, delete
+  - name: Preferences
+    description: User notification preferences
+  - name: SSE
+    description: Server-Sent Events for real-time notifications
+  - name: Events
+    description: Event publishing for testing (Admin only)
+  - name: Admin
+    description: Administrative operations (Admin only)
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ==================== HEALTH ====================
+  /actuator/health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Check if the service is running and healthy
+      operationId: healthCheck
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+                  components:
+                    type: object
+              example:
+                status: UP
+                components:
+                  db:
+                    status: UP
+                  redis:
+                    status: UP
+
+  # ==================== AUTHENTICATION ====================
+  /api/v1/auth/test/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user info
+      description: Returns information extracted from the JWT token
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/test/protected:
+    get:
+      tags:
+        - Authentication
+      summary: Test protected endpoint
+      description: Simple endpoint to verify JWT authentication works
+      operationId: testProtected
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  user:
+                    type: string
+                  timestamp:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/test/admin-only:
+    get:
+      tags:
+        - Authentication
+      summary: Test admin-only endpoint
+      description: Endpoint that requires ADMIN role
+      operationId: testAdminOnly
+      responses:
+        '200':
+          description: Admin access granted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  admin:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ==================== TEMPLATES ====================
+  /api/v1/templates:
+    get:
+      tags:
+        - Templates
+      summary: Get all templates
+      description: Retrieve paginated list of notification templates (Admin only)
+      operationId: getAllTemplates
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: sort
+          in: query
+          schema:
+            type: string
+            default: name,asc
+      responses:
+        '200':
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Template'
+                  pageable:
+                    $ref: '#/components/schemas/Pageable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Templates
+      summary: Create template
+      description: Create a new notification template (Admin only)
+      operationId: createTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateCreate'
+            examples:
+              emailTemplate:
+                summary: Email template
+                value:
+                  name: password_reset
+                  type: EMAIL
+                  subject: "Password Reset Request - {{username}}"
+                  body: "<html><body><h2>Hi {{username}}</h2><p>Click here to reset: {{resetLink}}</p></body></html>"
+                  variables:
+                    username: string
+                    resetLink: string
+      responses:
+        '201':
+          description: Template created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/templates/{name}:
+    get:
+      tags:
+        - Templates
+      summary: Get template by name
+      description: Retrieve a specific template by its name
+      operationId: getTemplateByName
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          example: welcome_user
+      responses:
+        '200':
+          description: Template found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Templates
+      summary: Update template
+      description: Update an existing template (Admin only)
+      operationId: updateTemplate
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateCreate'
+      responses:
+        '200':
+          description: Template updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Templates
+      summary: Delete template
+      description: Delete a template (Admin only)
+      operationId: deleteTemplate
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Template deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== USER NOTIFICATIONS ====================
+  /api/v1/notifications:
+    get:
+      tags:
+        - User Notifications
+      summary: Get notification history
+      description: Get paginated notification history for the current user (PUSH notifications only)
+      operationId: getNotificationHistory
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated notification history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserNotification'
+                  pageable:
+                    $ref: '#/components/schemas/Pageable'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/notifications/unread-count:
+    get:
+      tags:
+        - User Notifications
+      summary: Get unread count
+      description: Get the count of unread notifications for the current user
+      operationId: getUnreadCount
+      responses:
+        '200':
+          description: Unread notification count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    example: 5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/notifications/{id}/read:
+    put:
+      tags:
+        - User Notifications
+      summary: Mark notification as read
+      description: Mark a specific notification as read
+      operationId: markNotificationAsRead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Notification marked as read
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/notifications/mark-all-read:
+    put:
+      tags:
+        - User Notifications
+      summary: Mark all notifications as read
+      description: Mark all notifications as read for the current user
+      operationId: markAllNotificationsAsRead
+      responses:
+        '200':
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  markedCount:
+                    type: integer
+                    example: 10
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/notifications/{id}:
+    delete:
+      tags:
+        - User Notifications
+      summary: Delete notification
+      description: Delete a specific notification
+      operationId: deleteNotification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Notification deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ==================== USER PREFERENCES ==
+  /api/v1/preferences:
+    get:
+      tags:
+        - Preferences
+      summary: Get my preferences
+      description: Get notification preferences for the current authenticated user
+      operationId: getMyPreferences
+      responses:
+        '200':
+          description: User preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preferences'
+        '404':
+          description: Preferences not found (user should create them)
+
+    post:
+      tags:
+        - Preferences
+      summary: Create my preferences
+      description: Create notification preferences for the current user
+      operationId: createMyPreferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferencesCreate'
+            example:
+              notificationsEnabled: true
+              emailEnabled: true
+              pushEnabled: true
+              emailFrequency: IMMEDIATE
+              notificationTypes:
+                assessment_assigned:
+                  enabled: true
+                  emailEnabled: true
+                  pushEnabled: true
+                assessment_reminders:
+                  enabled: true
+                  emailEnabled: true
+                  pushEnabled: true
+                grade_notifications:
+                  enabled: true
+                  emailEnabled: true
+                  pushEnabled: true
+                comments_feedback:
+                  enabled: true
+                  emailEnabled: false
+                  pushEnabled: true
+                system_updates:
+                  enabled: true
+                  emailEnabled: false
+                  pushEnabled: false
+      responses:
+        '201':
+          description: Preferences created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preferences'
+
+    put:
+      tags:
+        - Preferences
+      summary: Update my preferences
+      description: Update notification preferences for the current user
+      operationId: updateMyPreferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferencesCreate'
+      responses:
+        '200':
+          description: Preferences updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preferences'
+
+  # ==================== ADMIN PREFERENCES ====================
+  /api/v1/admin/users/{userId}/preferences:
+    get:
+      tags:
+        - Admin
+      summary: Get user preferences (Admin)
+      description: Get notification preferences for any user (Admin only)
+      operationId: getUserPreferencesAdmin
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preferences'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - Admin
+      summary: Create user preferences (Admin)
+      description: Create notification preferences for any user (Admin only)
+      operationId: createUserPreferencesAdmin
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferencesCreate'
+      responses:
+        '201':
+          description: Preferences created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preferences'
+
+    put:
+      tags:
+        - Admin
+      summary: Update user preferences (Admin)
+      description: Update notification preferences for any user (Admin only)
+      operationId: updateUserPreferencesAdmin
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferencesCreate'
+      responses:
+        '200':
+          description: Preferences updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preferences'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin
+      summary: Delete user preferences (Admin)
+      description: Delete notification preferences for any user (Admin only)
+      operationId: deleteUserPreferencesAdmin
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Preferences deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== SSE ====================
+  /api/v1/sse/connect:
+    get:
+      tags:
+        - SSE
+      summary: Connect to SSE stream
+      description: |
+        Establish a Server-Sent Events connection to receive real-time notifications.
+        
+        **Note**: You can pass JWT token either as:
+        - Authorization header: `Bearer YOUR_TOKEN`
+        - Query parameter: `?token=YOUR_TOKEN` (for browser EventSource compatibility)
+        
+        Keep this connection open to receive events.
+      operationId: connectSSE
+      parameters:
+        - name: token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: JWT token (alternative to Authorization header)
+      responses:
+        '200':
+          description: SSE connection established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                connectionEvent:
+                  value: |
+                    event: connect
+                    data: {"message":"Connected to notification service","userId":123,"timestamp":"2025-11-23T10:00:00Z"}
+
+                notificationEvent:
+                  value: |
+                    event: notification
+                    data: {"type":"assessment.published","content":"<html>...</html>","timestamp":"2025-11-23T10:01:00Z"}
+
+                heartbeatEvent:
+                  value: |
+                    event: heartbeat
+                    data: {"timestamp":"2025-11-23T10:02:00Z","type":"heartbeat"}
+
+  /api/v1/sse/subscribe/{topic}:
+    get:
+      tags:
+        - SSE
+      summary: Subscribe to topic
+      description: Subscribe to a specific topic for broadcast messages
+      operationId: subscribeToTopic
+      parameters:
+        - name: topic
+          in: path
+          required: true
+          schema:
+            type: string
+          example: assessment-updates
+        - name: token
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Subscribed to topic
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /api/v1/sse/status/{userId}:
+    get:
+      tags:
+        - SSE
+      summary: Check connection status
+      description: Check if a user is connected to SSE
+      operationId: checkUserSSEStatus
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Connection status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: integer
+                  connected:
+                    type: boolean
+                  timestamp:
+                    type: integer
+
+  /api/v1/sse/stats:
+    get:
+      tags:
+        - SSE
+      summary: Get SSE statistics (Admin)
+      description: Get statistics about active SSE connections (Admin only)
+      operationId: getSSEStats
+      responses:
+        '200':
+          description: SSE statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activeUserConnections:
+                    type: integer
+                  timestamp:
+                    type: integer
+
+  /api/v1/sse/test/send-to-user:
+    post:
+      tags:
+        - SSE
+      summary: Send test notification to user (Admin)
+      description: Send a test notification to a specific user via SSE. Also saves to database as PUSH notification. (Admin only)
+      operationId: sendTestNotificationToUser
+      parameters:
+        - name: targetUserId
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: message
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            default: test_notification
+        - name: subject
+          in: query
+          required: false
+          schema:
+            type: string
+            default: Test Notification
+      responses:
+        '200':
+          description: Test notification sent and saved to database
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  notificationId:
+                    type: string
+                    format: uuid
+                  savedToDb:
+                    type: boolean
+                  sentViaSse:
+                    type: boolean
+                  targetUserId:
+                    type: integer
+                  message:
+                    type: string
+                  timestamp:
+                    type: integer
+
+  /api/v1/sse/test/broadcast:
+    post:
+      tags:
+        - SSE
+      summary: Broadcast to topic (Admin)
+      description: Broadcast a message to all users subscribed to a topic (Admin only)
+      operationId: broadcastToTopic
+      parameters:
+        - name: topic
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: message
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Message broadcasted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  topic:
+                    type: string
+                  message:
+                    type: string
+
+  # ==================== EVENT PUBLISHING ====================
+  /api/v1/redis/test/quick/user-registered:
+    post:
+      tags:
+        - Events
+      summary: Quick user registration test
+      description: Quickly publish a user registration event (Admin only)
+      operationId: quickUserRegistered
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: integer
+          example: 123
+        - name: username
+          in: query
+          required: true
+          schema:
+            type: string
+          example: johndoe
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+          example: john.doe@example.com
+      responses:
+        '200':
+          description: Event published successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPublishResponse'
+
+  /api/v1/redis/test/events/user-registered:
+    post:
+      tags:
+        - Events
+      summary: Publish user registered event
+      description: Publish a detailed user registration event (Admin only)
+      operationId: publishUserRegistered
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegisteredEvent'
+      responses:
+        '200':
+          description: Event published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPublishResponse'
+
+  /api/v1/redis/test/events/session-completed:
+    post:
+      tags:
+        - Events
+      summary: Publish session completed event
+      description: Publish a session completion event (Admin only)
+      operationId: publishSessionCompleted
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionCompletedEvent'
+            example:
+              userId: 123
+              username: johndoe
+              email: john.doe@example.com
+              sessionId: SESSION-2025-001
+              assessmentName: Spring Boot Advanced
+              completionTime: "45 minutes"
+              score: 95.5
+              status: PASSED
+      responses:
+        '200':
+          description: Event published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPublishResponse'
+
+  /api/v1/redis/test/events/proctoring-violation:
+    post:
+      tags:
+        - Events
+      summary: Publish proctoring violation event
+      description: Publish a proctoring violation event (Admin only)
+      operationId: publishProctoringViolation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProctoringViolationEvent'
+            example:
+              userId: 123
+              username: johndoe
+              sessionId: SESSION-2025-001
+              violationType: MULTIPLE_FACES_DETECTED
+              severity: HIGH
+              proctorIds: [1, 2, 3]
+      responses:
+        '200':
+          description: Event published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPublishResponse'
+
+  /api/v1/redis/test/events/assessment-published:
+    post:
+      tags:
+        - Events
+      summary: Publish assessment published event
+      description: Publish an assessment publication event (Admin only)
+      operationId: publishAssessmentPublished
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssessmentPublishedEvent'
+            example:
+              assessmentId: ASSESS-2025-001
+              assessmentName: Spring Boot Advanced Certification
+              duration: 120
+              dueDate: "2025-02-01T00:00:00Z"
+              assignedUsers:
+                - userId: 123
+                  username: johndoe
+                  email: john.doe@example.com
+      responses:
+        '200':
+          description: Event published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPublishResponse'
+
+  /api/v1/redis/test/bulk/user-registered:
+    post:
+      tags:
+        - Events
+      summary: Bulk user registration test
+      description: Publish multiple user registration events for testing (Admin only)
+      operationId: bulkUserRegistered
+      parameters:
+        - name: count
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Bulk events published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                  messageIds:
+                    type: array
+                    items:
+                      type: string
+
+  /api/v1/redis/test/workflow/complete:
+    post:
+      tags:
+        - Events
+      summary: Test complete workflow
+      description: Test all event types in sequence (Admin only)
+      operationId: testCompleteWorkflow
+      responses:
+        '200':
+          description: Workflow test completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  events:
+                    type: object
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token from Casdoor OAuth2.
+        
+        To get a token, authenticate with Casdoor:
+        ```
+        POST https://casdoor.sapx.me/api/login/oauth/access_token
+        Content-Type: application/x-www-form-urlencoded
+        
+        grant_type=password&
+        username=YOUR_USERNAME&
+        password=YOUR_PASSWORD&
+        client_id=YOUR_CLIENT_ID&
+        client_secret=YOUR_CLIENT_SECRET
+        ```
+
+  schemas:
+    # ==================== USER & AUTH ====================
+    UserInfo:
+      type: object
+      properties:
+        userId:
+          type: integer
+          example: 123
+        username:
+          type: string
+          example: johndoe
+        email:
+          type: string
+          example: john.doe@example.com
+        phone:
+          type: string
+          nullable: true
+        organization:
+          type: string
+          nullable: true
+        roles:
+          type: array
+          items:
+            type: string
+          example: ["ROLE_ADMIN", "ROLE_USER"]
+        isAdmin:
+          type: boolean
+        isUser:
+          type: boolean
+        authenticated:
+          type: boolean
+
+    # ==================== TEMPLATES ====================
+    Template:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: welcome_user
+        type:
+          type: string
+          enum: [EMAIL, PUSH]
+        subject:
+          type: string
+          example: "Welcome to Our Platform, {{firstName}}!"
+        body:
+          type: string
+          example: "<html><body><h2>Welcome {{firstName}} {{lastName}}!</h2></body></html>"
+        variables:
+          type: object
+          additionalProperties: true
+          example:
+            firstName: string
+            lastName: string
+            username: string
+
+    TemplateCreate:
+      type: object
+      required:
+        - name
+        - type
+        - body
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        type:
+          type: string
+          enum: [EMAIL, PUSH]
+        subject:
+          type: string
+          maxLength: 255
+        body:
+          type: string
+        variables:
+          type: object
+          additionalProperties: true
+
+    # ==================== USER NOTIFICATIONS ====================
+    UserNotification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          example: assessment.published
+        subject:
+          type: string
+          example: New Assessment Available
+        content:
+          type: string
+          example: You have been assigned a new assessment...
+        isRead:
+          type: boolean
+          default: false
+        createdAt:
+          type: number
+          description: Timestamp in epoch seconds
+          example: 1765300386.744872
+
+    # ==================== PREFERENCES ====================
+    Preferences:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: integer
+        notificationsEnabled:
+          type: boolean
+          default: true
+          description: Global toggle to enable/disable all notifications
+        emailEnabled:
+          type: boolean
+          default: true
+        pushEnabled:
+          type: boolean
+          default: true
+        emailFrequency:
+          type: string
+          enum: [IMMEDIATE, DAILY, WEEKLY]
+          default: IMMEDIATE
+        notificationTypes:
+          type: object
+          description: Per-notification-type settings
+          additionalProperties:
+            $ref: '#/components/schemas/NotificationTypeSetting'
+          example:
+            assessment_assigned:
+              enabled: true
+              emailEnabled: true
+              pushEnabled: true
+            grade_notifications:
+              enabled: true
+              emailEnabled: true
+              pushEnabled: true
+
+    NotificationTypeSetting:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          default: true
+        emailEnabled:
+          type: boolean
+          default: true
+        pushEnabled:
+          type: boolean
+          default: true
+
+    PreferencesCreate:
+      type: object
+      properties:
+        notificationsEnabled:
+          type: boolean
+        emailEnabled:
+          type: boolean
+        pushEnabled:
+          type: boolean
+        emailFrequency:
+          type: string
+          enum: [IMMEDIATE, DAILY, WEEKLY]
+        notificationTypes:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/NotificationTypeSetting'
+
+    # ==================== EVENTS ====================
+    UserRegisteredEvent:
+      type: object
+      required:
+        - userId
+        - username
+        - email
+      properties:
+        userId:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+
+    SessionCompletedEvent:
+      type: object
+      required:
+        - userId
+        - username
+        - sessionId
+        - assessmentName
+      properties:
+        userId:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        sessionId:
+          type: string
+        assessmentName:
+          type: string
+        completionTime:
+          type: string
+        score:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [PASSED, FAILED]
+
+    ProctoringViolationEvent:
+      type: object
+      required:
+        - userId
+        - username
+        - sessionId
+        - violationType
+      properties:
+        userId:
+          type: integer
+        username:
+          type: string
+        sessionId:
+          type: string
+        violationType:
+          type: string
+          example: MULTIPLE_FACES_DETECTED
+        severity:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+        proctorIds:
+          type: array
+          items:
+            type: integer
+
+    AssessmentPublishedEvent:
+      type: object
+      required:
+        - assessmentId
+        - assessmentName
+        - assignedUsers
+      properties:
+        assessmentId:
+          type: string
+        assessmentName:
+          type: string
+        duration:
+          type: integer
+          description: Duration in minutes
+        dueDate:
+          type: string
+          format: date-time
+        assignedUsers:
+          type: array
+          items:
+            type: object
+            properties:
+              userId:
+                type: integer
+              username:
+                type: string
+              email:
+                type: string
+
+    EventPublishResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        messageId:
+          type: string
+        stream:
+          type: string
+        event:
+          type: object
+        checkMailHog:
+          type: string
+
+    # ==================== PAGINATION ====================
+    Pageable:
+      type: object
+      properties:
+        pageNumber:
+          type: integer
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+        totalElements:
+          type: integer
+        sort:
+          type: object
+
+    # ==================== ERRORS ====================
+    Error:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Bad request - Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            timestamp: "2025-11-23T10:00:00Z"
+            status: 400
+            error: Bad Request
+            message: Invalid request parameters
+            path: /api/v1/templates
+
+    Unauthorized:
+      description: Unauthorized - Invalid or missing JWT token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            timestamp: "2025-11-23T10:00:00Z"
+            status: 401
+            error: Unauthorized
+            message: Full authentication is required to access this resource
+            path: /api/v1/templates
+
+    Forbidden:
+      description: Forbidden - Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            timestamp: "2025-11-23T10:00:00Z"
+            status: 403
+            error: Forbidden
+            message: Access Denied - Admin role required
+            path: /api/v1/templates
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            timestamp: "2025-11-23T10:00:00Z"
+            status: 404
+            error: Not Found
+            message: Template not found
+            path: /api/v1/templates/unknown_template

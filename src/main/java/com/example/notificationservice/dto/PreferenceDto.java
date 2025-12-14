@@ -21,6 +21,12 @@ public class PreferenceDto {
     @NotNull(message = "User ID is required")
     private Integer userId;
 
+    /**
+     * Global toggle to enable/disable all notifications
+     */
+    @Builder.Default
+    private Boolean notificationsEnabled = true;
+
     @Builder.Default
     private Boolean emailEnabled = true;
 
@@ -28,10 +34,14 @@ public class PreferenceDto {
     private Boolean pushEnabled = true;
 
     @Builder.Default
-    private Boolean sseEnabled = true;
-
-    @Builder.Default
     private EmailFrequency emailFrequency = EmailFrequency.IMMEDIATE;
 
-    private Map<String, Boolean> categories;
+    /**
+     * Per-notification-type settings
+     * Structure: { "notification_type": { "enabled": bool, "emailEnabled": bool,
+     * "pushEnabled": bool } }
+     * Example types: "assessment_assigned", "assessment_reminders",
+     * "grade_notifications", etc.
+     */
+    private Map<String, Map<String, Boolean>> notificationTypes;
 }

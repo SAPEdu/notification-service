@@ -29,11 +29,11 @@ public class PreferenceService {
 
         NotificationPreference preference = NotificationPreference.builder()
                 .userId(dto.getUserId())
+                .notificationsEnabled(dto.getNotificationsEnabled())
                 .emailEnabled(dto.getEmailEnabled())
                 .pushEnabled(dto.getPushEnabled())
-                .sseEnabled(dto.getSseEnabled())
                 .emailFrequency(dto.getEmailFrequency())
-                .categories(dto.getCategories())
+                .categories(dto.getNotificationTypes())
                 .build();
 
         NotificationPreference saved = preferenceRepository.save(preference);
@@ -47,11 +47,11 @@ public class PreferenceService {
                         .userId(dto.getUserId())
                         .build());
 
+        preference.setNotificationsEnabled(dto.getNotificationsEnabled());
         preference.setEmailEnabled(dto.getEmailEnabled());
         preference.setPushEnabled(dto.getPushEnabled());
-        preference.setSseEnabled(dto.getSseEnabled());
         preference.setEmailFrequency(dto.getEmailFrequency());
-        preference.setCategories(dto.getCategories());
+        preference.setCategories(dto.getNotificationTypes());
 
         NotificationPreference saved = preferenceRepository.save(preference);
         return mapToDto(saved);
@@ -72,13 +72,11 @@ public class PreferenceService {
         return PreferenceDto.builder()
                 .id(entity.getId())
                 .userId(entity.getUserId())
+                .notificationsEnabled(entity.getNotificationsEnabled())
                 .emailEnabled(entity.getEmailEnabled())
                 .pushEnabled(entity.getPushEnabled())
-                .sseEnabled(entity.getSseEnabled())
                 .emailFrequency(entity.getEmailFrequency())
-                .categories(entity.getCategories())
+                .notificationTypes(entity.getCategories())
                 .build();
     }
-
-
 }

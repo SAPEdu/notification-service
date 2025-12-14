@@ -2,7 +2,6 @@ package com.example.notificationservice.enums;
 
 public enum TemplateType {
     EMAIL("email"),
-    SSE("sse"),
     PUSH("push");
 
     private final String value;

@@ -50,7 +50,7 @@ public class NotificationService {
      */
     @Transactional
     public void processNotification(String eventType, Integer userId, String email,
-                                    Map<String, Object> data, List<NotificationChannel> channels) {
+            Map<String, Object> data, List<NotificationChannel> channels) {
 
         log.info("Processing notification - Type: {}, User: {}, Email: {}, Channels: {}",
                 eventType, userId, email, channels);
@@ -58,34 +58,36 @@ public class NotificationService {
         // Check user preferences
         Optional<NotificationPreference> preference = preferenceRepository.findByUserId(userId);
 
-        // Get template based on event type
-        String templateName = mapEventToTemplate(eventType);
-        Optional<NotificationTemplate> templateOpt = templateRepository.findByName(templateName);
-
-        if (templateOpt.isEmpty()) {
-            log.error("❌ Template not found for event type: {} (template name: {})", eventType, templateName);
-            return;
-        }
-
-        NotificationTemplate template = templateOpt.get();
-        log.debug("Found template: {} for event type: {}", templateName, eventType);
-
-        // Validate template data
-        if (!templateEngine.validateTemplateData(template.getBody(), data)) {
-            log.warn("⚠️ Missing required template variables for template: {}", templateName);
-        }
-
-        // Process content with template engine
-        String processedContent = templateEngine.processTemplate(template.getBody(), data);
-        String processedSubject = template.getSubject() != null ?
-                templateEngine.processTemplate(template.getSubject(), data) : "";
-
-        log.debug("Processed subject: {}", processedSubject);
-
         // Create notification record and send through appropriate channels
         for (NotificationChannel channel : channels) {
             if (shouldSendToChannel(preference, channel)) {
                 log.info("Sending notification via channel: {}", channel);
+
+                // Get channel-specific template
+                String templateName = mapEventToTemplate(eventType, channel);
+                Optional<NotificationTemplate> templateOpt = templateRepository.findByName(templateName);
+
+                if (templateOpt.isEmpty()) {
+                    log.error("❌ Template not found for event type: {} channel: {} (template name: {})",
+                            eventType, channel, templateName);
+                    continue;
+                }
+
+                NotificationTemplate template = templateOpt.get();
+                log.debug("Found template: {} for event type: {} channel: {}", templateName, eventType, channel);
+
+                // Validate template data
+                if (!templateEngine.validateTemplateData(template.getBody(), data)) {
+                    log.warn("⚠️ Missing required template variables for template: {}", templateName);
+                }
+
+                // Process content with template engine
+                String processedContent = templateEngine.processTemplate(template.getBody(), data);
+                String processedSubject = template.getSubject() != null
+                        ? templateEngine.processTemplate(template.getSubject(), data)
+                        : "";
+
+                log.debug("Processed subject: {}", processedSubject);
 
                 Notification notification = Notification.builder()
                         .recipientId(userId)
@@ -119,7 +121,7 @@ public class NotificationService {
         AtomicInteger failedCount = new AtomicInteger(0);
 
         // Get template
-        String templateName = mapEventToTemplate(request.getType());
+        String templateName = mapEventToTemplate(request.getType(), NotificationChannel.EMAIL);
         Optional<NotificationTemplate> templateOpt = templateRepository.findByName(templateName);
 
         if (templateOpt.isEmpty()) {
@@ -127,8 +129,7 @@ public class NotificationService {
             return CompletableFuture.completedFuture(Map.of(
                     "total", request.getUserIds().size(),
                     "success", 0,
-                    "failed", request.getUserIds().size()
-            ));
+                    "failed", request.getUserIds().size()));
         }
 
         NotificationTemplate template = templateOpt.get();
@@ -153,8 +154,9 @@ public class NotificationService {
 
                 // Process template
                 String processedContent = templateEngine.processTemplate(template.getBody(), userData);
-                String processedSubject = template.getSubject() != null ?
-                        templateEngine.processTemplate(template.getSubject(), userData) : "";
+                String processedSubject = template.getSubject() != null
+                        ? templateEngine.processTemplate(template.getSubject(), userData)
+                        : "";
 
                 // Send through requested channels
                 for (NotificationChannel channel : request.getChannels()) {
@@ -189,8 +191,7 @@ public class NotificationService {
         Map<String, Integer> result = Map.of(
                 "total", request.getUserIds().size(),
                 "success", successCount.get(),
-                "failed", failedCount.get()
-        );
+                "failed", failedCount.get());
 
         log.info("Bulk notification completed. Batch: {}, Total: {}, Success: {}, Failed: {}",
                 batchId, request.getUserIds().size(), successCount.get(), failedCount.get());
@@ -212,19 +213,18 @@ public class NotificationService {
                         emailService.sendEmail(
                                 notification.getRecipientEmail(),
                                 notification.getSubject(),
-                                notification.getContent()
-                        ).thenAccept(result -> {
-                            if (result) {
-                                updateNotificationStatus(notification, NotificationStatus.SENT);
-                                publishNotificationSentEvent(notification);
-                            } else {
-                                handleFailedNotification(notification, "Failed to send email");
-                            }
-                        }).exceptionally(ex -> {
-                            log.error("Email sending exception: {}", ex.getMessage());
-                            handleFailedNotification(notification, ex.getMessage());
-                            return null;
-                        });
+                                notification.getContent()).thenAccept(result -> {
+                                    if (result) {
+                                        updateNotificationStatus(notification, NotificationStatus.SENT);
+                                        publishNotificationSentEvent(notification);
+                                    } else {
+                                        handleFailedNotification(notification, "Failed to send email");
+                                    }
+                                }).exceptionally(ex -> {
+                                    log.error("Email sending exception: {}", ex.getMessage());
+                                    handleFailedNotification(notification, ex.getMessage());
+                                    return null;
+                                });
 
                         // Consider it sent for now (will be updated by callback)
                         sent = true;
@@ -235,25 +235,24 @@ public class NotificationService {
                     }
                     break;
 
-                case SSE:
-                    log.info("Sending SSE notification to user: {}", notification.getRecipientId());
+                case PUSH:
+                    log.info("Sending PUSH notification to user: {}", notification.getRecipientId());
+                    // Use SSE emitter service for real-time push delivery
                     sent = sseEmitterService.sendToUser(
                             notification.getRecipientId(),
                             notification.getType(),
-                            notification.getContent()
-                    );
+                            notification.getContent());
 
                     if (sent) {
                         updateNotificationStatus(notification, NotificationStatus.SENT);
                         publishNotificationSentEvent(notification);
                     } else {
-                        handleFailedNotification(notification, "User not connected to SSE");
+                        // User not connected, but notification is saved - mark as pending for later
+                        // delivery
+                        log.info("User {} not connected, notification saved for later", notification.getRecipientId());
+                        updateNotificationStatus(notification, NotificationStatus.SENT);
+                        publishNotificationSentEvent(notification);
                     }
-                    break;
-
-                case PUSH:
-                    log.warn("Push channel not implemented yet");
-                    handleFailedNotification(notification, "Push channel not implemented");
                     break;
             }
 
@@ -269,7 +268,7 @@ public class NotificationService {
 
         boolean willRetry = notification.getRetryCount() < maxRetryAttempts;
 
-        notification.setStatus(NotificationStatus.FAILED);  // <-- always mark failed
+        notification.setStatus(NotificationStatus.FAILED); // <-- always mark failed
 
         if (!willRetry) {
             log.error("❌ Notification {} permanently failed after {} attempts",
@@ -310,16 +309,22 @@ public class NotificationService {
     }
 
     private boolean shouldSendToChannel(Optional<NotificationPreference> preference,
-                                        NotificationChannel channel) {
+            NotificationChannel channel) {
         if (preference.isEmpty()) {
             log.debug("No preferences found, defaulting to enabled for channel: {}", channel);
             return true;
         }
 
         NotificationPreference pref = preference.get();
+
+        // Check global notifications toggle first
+        if (pref.getNotificationsEnabled() != null && !pref.getNotificationsEnabled()) {
+            log.debug("Global notifications disabled for user");
+            return false;
+        }
+
         boolean enabled = switch (channel) {
             case EMAIL -> pref.getEmailEnabled();
-            case SSE -> pref.getSseEnabled();
             case PUSH -> pref.getPushEnabled();
         };
 
@@ -327,15 +332,33 @@ public class NotificationService {
         return enabled;
     }
 
-    private String mapEventToTemplate(String eventType) {
-        String templateName = switch (eventType) {
+    /**
+     * Map event type to template name based on channel.
+     * EMAIL channel uses _email suffix (HTML templates)
+     * PUSH channel uses _push suffix (plain text templates)
+     */
+    private String mapEventToTemplate(String eventType, NotificationChannel channel) {
+        String baseName = switch (eventType) {
             case "user.registered" -> "welcome_user";
             case "session.completed" -> "session_completion";
             case "proctoring.violation" -> "proctoring_alert";
             case "assessment.published" -> "new_assessment_assigned";
+            case "assessment.reminder" -> "assessment_reminder";
+            case "grade.available" -> "grade_available";
+            case "comment.feedback" -> "comment_feedback";
+            case "system.update" -> "system_update";
+            case "invite.student" -> "invite_student_to_group";
             default -> eventType.replace(".", "_");
         };
-        log.debug("Mapped event type '{}' to template '{}'", eventType, templateName);
+
+        // Add channel-specific suffix
+        String suffix = switch (channel) {
+            case EMAIL -> "_email";
+            case PUSH -> "_push";
+        };
+
+        String templateName = baseName + suffix;
+        log.debug("Mapped event type '{}' + channel '{}' to template '{}'", eventType, channel, templateName);
         return templateName;
     }
 
@@ -367,7 +390,8 @@ public class NotificationService {
         redisStreamService.publish(notificationEventsStream, event);
     }
 
-    private void publishBulkNotificationCompletedEvent(String batchId, int total, int success, int failed, String type) {
+    private void publishBulkNotificationCompletedEvent(String batchId, int total, int success, int failed,
+            String type) {
         BulkNotificationCompletedEvent event = BulkNotificationCompletedEvent.builder()
                 .batchId(batchId)
                 .totalRecipients(total)

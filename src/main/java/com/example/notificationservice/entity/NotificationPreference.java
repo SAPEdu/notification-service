@@ -28,6 +28,10 @@ public class NotificationPreference {
     @Column(name = "user_id", nullable = false, unique = true)
     private Integer userId;
 
+    @Column(name = "notifications_enabled")
+    @Builder.Default
+    private Boolean notificationsEnabled = true;
+
     @Column(name = "email_enabled")
     @Builder.Default
     private Boolean emailEnabled = true;
@@ -36,18 +40,21 @@ public class NotificationPreference {
     @Builder.Default
     private Boolean pushEnabled = true;
 
-    @Column(name = "sse_enabled")
-    @Builder.Default
-    private Boolean sseEnabled = true;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "email_frequency", length = 20)
     @Builder.Default
     private EmailFrequency emailFrequency = EmailFrequency.IMMEDIATE;
 
+    /**
+     * Per-notification-type settings stored as JSONB
+     * Structure: { "notification_type": { "enabled": bool, "emailEnabled": bool,
+     * "pushEnabled": bool } }
+     * Example: { "assessment_assigned": { "enabled": true, "emailEnabled": true,
+     * "pushEnabled": true } }
+     */
     @Type(JsonType.class)
     @Column(columnDefinition = "jsonb")
-    private Map<String, Boolean> categories;
+    private Map<String, Map<String, Boolean>> categories;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

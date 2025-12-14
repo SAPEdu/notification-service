@@ -25,8 +25,10 @@ public class NotificationDto {
     private String subject;
     private String content;
     private NotificationStatus status;
+    private Boolean isRead;
     private Instant sentAt;
     private Instant deliveredAt;
+    private Instant createdAt;
     private String errorMessage;
     private Integer retryCount;
 }

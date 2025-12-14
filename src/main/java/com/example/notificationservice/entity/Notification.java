@@ -67,6 +67,10 @@ public class Notification {
     @Builder.Default
     private Integer retryCount = 0;
 
+    @Column(name = "is_read")
+    @Builder.Default
+    private Boolean isRead = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

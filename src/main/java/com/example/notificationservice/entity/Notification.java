@@ -24,7 +24,7 @@ public class Notification {
     private UUID id;
 
     @Column(name = "recipient_id")
-    private Integer recipientId;
+    private String recipientId;
 
     @Column(name = "recipient_email", length = 255)
     private String recipientEmail;

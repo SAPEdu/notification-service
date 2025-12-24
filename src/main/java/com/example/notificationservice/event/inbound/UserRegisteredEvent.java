@@ -15,7 +15,7 @@ import lombok.experimental.SuperBuilder;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @EqualsAndHashCode(callSuper = true)
 public class UserRegisteredEvent extends BaseEvent {
-    private Integer userId;
+    private String userId;
     private String username;
     private String email;
     private String firstName;

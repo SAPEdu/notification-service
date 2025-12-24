@@ -18,7 +18,7 @@ import java.util.UUID;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class NotificationFailedEvent extends BaseEvent {
     private UUID notificationId;
-    private Integer recipientId;
+    private String recipientId;
     private String channel;
     private String errorMessage;
     private Integer retryCount;

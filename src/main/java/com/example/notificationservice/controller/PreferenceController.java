@@ -25,7 +25,7 @@ public class PreferenceController {
      */
     @GetMapping("/preferences")
     public ResponseEntity<PreferenceDto> getMyPreferences() {
-        Integer userId = authContext.getCurrentUserId()
+        String userId = authContext.getCurrentUserId()
                 .orElseThrow(() -> new IllegalStateException("User ID not found in token"));
 
         log.info("User {} fetching their own preferences", userId);
@@ -41,7 +41,7 @@ public class PreferenceController {
     public ResponseEntity<PreferenceDto> updateMyPreferences(
             @Valid @RequestBody PreferenceDto preferenceDto) {
 
-        Integer userId = authContext.getCurrentUserId()
+        String userId = authContext.getCurrentUserId()
                 .orElseThrow(() -> new IllegalStateException("User ID not found in token"));
 
         log.info("User {} updating their own preferences", userId);
@@ -60,7 +60,7 @@ public class PreferenceController {
     public ResponseEntity<PreferenceDto> createMyPreferences(
             @Valid @RequestBody PreferenceDto preferenceDto) {
 
-        Integer userId = authContext.getCurrentUserId()
+        String userId = authContext.getCurrentUserId()
                 .orElseThrow(() -> new IllegalStateException("User ID not found in token"));
 
         log.info("User {} creating their preferences", userId);
@@ -79,7 +79,7 @@ public class PreferenceController {
      */
     @GetMapping("/admin/users/{userId}/preferences")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<PreferenceDto> getUserPreferencesAsAdmin(@PathVariable Integer userId) {
+    public ResponseEntity<PreferenceDto> getUserPreferencesAsAdmin(@PathVariable String userId) {
         log.info("Admin fetching preferences for user: {}", userId);
         return preferenceService.getUserPreferences(userId)
                 .map(ResponseEntity::ok)
@@ -92,10 +92,10 @@ public class PreferenceController {
     @PutMapping("/admin/users/{userId}/preferences")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PreferenceDto> updateUserPreferencesAsAdmin(
-            @PathVariable Integer userId,
+            @PathVariable String userId,
             @Valid @RequestBody PreferenceDto preferenceDto) {
 
-        Integer adminId = authContext.getCurrentUserId().orElse(null);
+        String adminId = authContext.getCurrentUserId().orElse(null);
         log.info("Admin {} updating preferences for user: {}", adminId, userId);
 
         // Admin can set any userId
@@ -110,10 +110,10 @@ public class PreferenceController {
     @PostMapping("/admin/users/{userId}/preferences")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PreferenceDto> createUserPreferencesAsAdmin(
-            @PathVariable Integer userId,
+            @PathVariable String userId,
             @Valid @RequestBody PreferenceDto preferenceDto) {
 
-        Integer adminId = authContext.getCurrentUserId().orElse(null);
+        String adminId = authContext.getCurrentUserId().orElse(null);
         log.info("Admin {} creating preferences for user: {}", adminId, userId);
 
         preferenceDto.setUserId(userId);
@@ -126,8 +126,8 @@ public class PreferenceController {
      */
     @DeleteMapping("/admin/users/{userId}/preferences")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> deleteUserPreferencesAsAdmin(@PathVariable Integer userId) {
-        Integer adminId = authContext.getCurrentUserId().orElse(null);
+    public ResponseEntity<Void> deleteUserPreferencesAsAdmin(@PathVariable String userId) {
+        String adminId = authContext.getCurrentUserId().orElse(null);
         log.info("Admin {} deleting preferences for user: {}", adminId, userId);
 
         boolean deleted = preferenceService.deleteUserPreferences(userId);

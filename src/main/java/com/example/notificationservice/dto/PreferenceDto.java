@@ -18,7 +18,7 @@ public class PreferenceDto {
     private UUID id;
 
     @NotNull(message = "User ID is required")
-    private Integer userId;
+    private String userId;
 
     /**
      * Global toggle to enable/disable all notifications

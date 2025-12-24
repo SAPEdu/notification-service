@@ -49,7 +49,7 @@ public class NotificationService {
      * Process single notification for a user
      */
     @Transactional
-    public void processNotification(String eventType, Integer userId, String email,
+    public void processNotification(String eventType, String userId, String email,
             Map<String, Object> data, List<NotificationChannel> channels) {
 
         log.info("Processing notification - Type: {}, User: {}, Email: {}, Channels: {}",
@@ -135,7 +135,7 @@ public class NotificationService {
         NotificationTemplate template = templateOpt.get();
 
         // Process each user
-        for (Integer userId : request.getUserIds()) {
+        for (String userId : request.getUserIds()) {
             try {
                 // Merge common data with user-specific data
                 Map<String, Object> userData = new HashMap<>();

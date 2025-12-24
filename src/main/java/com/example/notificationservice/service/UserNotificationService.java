@@ -27,7 +27,7 @@ public class UserNotificationService {
     /**
      * Get paginated notification history for a user (PUSH notifications only)
      */
-    public Page<UserNotificationResponse> getNotificationHistory(Integer userId, int page, int size) {
+    public Page<UserNotificationResponse> getNotificationHistory(String userId, int page, int size) {
         log.info("Fetching notification history for user: {}, page: {}, size: {}", userId, page, size);
 
         Pageable pageable = PageRequest.of(page, size);
@@ -40,7 +40,7 @@ public class UserNotificationService {
     /**
      * Get unread notification count for a user
      */
-    public long getUnreadCount(Integer userId) {
+    public long getUnreadCount(String userId) {
         log.info("Getting unread count for user: {}", userId);
         return notificationRepository.countUnreadByUserId(userId);
     }
@@ -49,7 +49,7 @@ public class UserNotificationService {
      * Mark a specific notification as read
      */
     @Transactional
-    public boolean markAsRead(Integer userId, UUID notificationId) {
+    public boolean markAsRead(String userId, UUID notificationId) {
         log.info("Marking notification {} as read for user: {}", notificationId, userId);
 
         return notificationRepository.findByIdAndRecipientId(notificationId, userId)
@@ -68,7 +68,7 @@ public class UserNotificationService {
      * Mark all notifications as read for a user
      */
     @Transactional
-    public int markAllAsRead(Integer userId) {
+    public int markAllAsRead(String userId) {
         log.info("Marking all notifications as read for user: {}", userId);
         int count = notificationRepository.markAllAsReadByUserId(userId);
         log.info("Marked {} notifications as read for user: {}", count, userId);
@@ -79,7 +79,7 @@ public class UserNotificationService {
      * Delete a specific notification
      */
     @Transactional
-    public boolean deleteNotification(Integer userId, UUID notificationId) {
+    public boolean deleteNotification(String userId, UUID notificationId) {
         log.info("Deleting notification {} for user: {}", notificationId, userId);
 
         if (notificationRepository.existsByIdAndRecipientId(notificationId, userId)) {

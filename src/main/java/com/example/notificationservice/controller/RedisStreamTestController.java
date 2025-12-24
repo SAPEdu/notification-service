@@ -134,7 +134,7 @@ public class RedisStreamTestController {
          */
         @PostMapping("/quick/user-registered")
         public ResponseEntity<Map<String, Object>> quickUserRegistered(
-                        @RequestParam(defaultValue = "123") Integer userId,
+                        @RequestParam(defaultValue = "123") String userId,
                         @RequestParam(defaultValue = "john.doe") String username,
                         @RequestParam(defaultValue = "john.doe@example.com") String email) {
 
@@ -225,7 +225,7 @@ public class RedisStreamTestController {
         public ResponseEntity<Map<String, Object>> clearStream(@PathVariable String streamName) {
                 String fullStreamName = resolveStreamName(streamName);
 
-                Integer adminId = authContext.getCurrentUserId().orElse(null);
+                String adminId = authContext.getCurrentUserId().orElse(null);
                 log.warn("Admin {} is clearing stream: {}", adminId, fullStreamName);
 
                 Boolean deleted = redisTemplate.delete(fullStreamName);
@@ -248,7 +248,7 @@ public class RedisStreamTestController {
 
                 for (int i = 1; i <= count; i++) {
                         UserRegisteredEvent event = UserRegisteredEvent.builder()
-                                        .userId(1000 + i)
+                                        .userId("1000" + i)
                                         .username("user" + i)
                                         .email("user" + i + "@example.com")
                                         .firstName("User")
@@ -277,7 +277,7 @@ public class RedisStreamTestController {
 
                 // 1. User Registration
                 UserRegisteredEvent userEvent = UserRegisteredEvent.builder()
-                                .userId(999)
+                                .userId("999")
                                 .username("workflow.test")
                                 .email("workflow@example.com")
                                 .firstName("Workflow")
@@ -288,7 +288,7 @@ public class RedisStreamTestController {
 
                 // 2. Session Completed
                 SessionCompletedEvent sessionEvent = SessionCompletedEvent.builder()
-                                .userId(999)
+                                .userId("999")
                                 .username("workflow.test")
                                 .email("workflow@example.com")
                                 .sessionId("SESSION-WORKFLOW-001")
@@ -302,12 +302,12 @@ public class RedisStreamTestController {
 
                 // 3. Proctoring Violation
                 ProctoringViolationEvent violationEvent = ProctoringViolationEvent.builder()
-                                .userId(999)
+                                .userId("999")
                                 .username("workflow.test")
                                 .sessionId("SESSION-WORKFLOW-001")
                                 .violationType("TEST_VIOLATION")
                                 .severity("LOW")
-                                .proctorIds(List.of(1, 2, 3))
+                                .proctorIds(List.of("1", "2", "3"))
                                 .build();
                 violationEvent.init();
                 results.put("proctoringViolation", redisStreamService.publish(proctoringEventsStream, violationEvent));
@@ -346,7 +346,7 @@ public class RedisStreamTestController {
          */
         @PostMapping("/debug/process-assessment-directly")
         public ResponseEntity<Map<String, Object>> debugProcessAssessment(
-                        @RequestParam Integer userId,
+                        @RequestParam String userId,
                         @RequestParam String username,
                         @RequestParam(required = false) String email) {
 

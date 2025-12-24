@@ -79,7 +79,7 @@ public class TestDataGenerator implements CommandLineRunner {
 
     private void generateUserRegisteredEvent() {
         UserRegisteredEvent event = UserRegisteredEvent.builder()
-                .userId(123)
+                .userId("123")
                 .username("john.doe")
                 .email("john.doe@example.com")
                 .firstName("John")
@@ -93,7 +93,7 @@ public class TestDataGenerator implements CommandLineRunner {
 
     private void generateSessionCompletedEvent() {
         SessionCompletedEvent event = SessionCompletedEvent.builder()
-                .userId(123)
+                .userId("123")
                 .username("john.doe")
                 .email("john.doe@example.com")
                 .sessionId("SESSION-" + System.currentTimeMillis())
@@ -110,12 +110,12 @@ public class TestDataGenerator implements CommandLineRunner {
 
     private void generateProctoringViolationEvent() {
         ProctoringViolationEvent event = ProctoringViolationEvent.builder()
-                .userId(123)
+                .userId("123")
                 .username("john.doe")
                 .sessionId("SESSION-" + System.currentTimeMillis())
                 .violationType("MULTIPLE_FACES_DETECTED")
                 .severity("HIGH")
-                .proctorIds(List.of(1, 2, 3))
+                .proctorIds(List.of("1", "2", "3"))
                 .build();
         event.init();
 
@@ -131,16 +131,15 @@ public class TestDataGenerator implements CommandLineRunner {
                 .dueDate(Instant.now().plusSeconds(604800).toString())
                 .assignedUsers(List.of(
                         AssessmentPublishedEvent.UserInfo.builder()
-                                .userId(123)
+                                .userId("123")
                                 .username("john.doe")
                                 .email("john.doe@example.com")
                                 .build(),
                         AssessmentPublishedEvent.UserInfo.builder()
-                                .userId(124)
+                                .userId("124")
                                 .username("jane.smith")
                                 .email("jane.smith@example.com")
-                                .build()
-                ))
+                                .build()))
                 .build();
         event.init();
 
@@ -154,7 +153,7 @@ public class TestDataGenerator implements CommandLineRunner {
         // Generate 5 user registrations
         for (int i = 1; i <= 5; i++) {
             UserRegisteredEvent event = UserRegisteredEvent.builder()
-                    .userId(100 + i)
+                    .userId("100" + i)
                     .username("user" + i)
                     .email("user" + i + "@example.com")
                     .firstName("User")
@@ -168,7 +167,7 @@ public class TestDataGenerator implements CommandLineRunner {
         // Generate 5 session completions
         for (int i = 1; i <= 5; i++) {
             SessionCompletedEvent event = SessionCompletedEvent.builder()
-                    .userId(100 + i)
+                    .userId("100" + i)
                     .username("user" + i)
                     .email("user" + i + "@example.com")
                     .sessionId("BULK-SESSION-" + i)

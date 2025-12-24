@@ -26,7 +26,7 @@ public class AssessmentPublishedEvent extends BaseEvent {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class UserInfo {
-        private Integer userId;
+        private String userId;
         private String username;
         private String email;
     }

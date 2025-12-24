@@ -13,59 +13,36 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CasdoorAuthenticationContext {
 
-    public Optional<Integer> getCurrentUserId() {
+    public Optional<String> getCurrentUserId() {
         return getJwt().map(jwt -> {
-            // Casdoor typically uses 'name' or 'id' for user identifier
-            // First try to get from 'id' claim (if numeric)
+            // Priority 1: 'id' claim
             Object idClaim = jwt.getClaim("id");
             if (idClaim != null) {
-                try {
-                    return Integer.parseInt(idClaim.toString());
-                } catch (NumberFormatException e) {
-                    log.debug("ID claim is not numeric: {}", idClaim);
-                }
+                return idClaim.toString();
             }
 
-            // Try 'userId' claim
+            // Priority 2: 'userId' claim
             Object userId = jwt.getClaim("userId");
             if (userId != null) {
-                try {
-                    return Integer.parseInt(userId.toString());
-                } catch (NumberFormatException e) {
-                    log.debug("userId claim is not numeric: {}", userId);
-                }
+                return userId.toString();
             }
 
-            // Try to extract from 'sub' (subject)
+            // Priority 3: 'sub' claim
             String sub = jwt.getSubject();
             if (sub != null) {
-                // Casdoor format might be "admin/user_123" or just "123"
+                // Handle "org/user_id" format if present
                 if (sub.contains("/")) {
-                    String[] parts = sub.split("/");
-                    if (parts.length > 1) {
-                        String lastPart = parts[parts.length - 1];
-                        if (lastPart.startsWith("user_")) {
-                            try {
-                                return Integer.parseInt(lastPart.substring(5));
-                            } catch (NumberFormatException e) {
-                                log.debug("Could not parse user ID from sub: {}", sub);
-                            }
-                        }
-                    }
+                    return sub.substring(sub.lastIndexOf('/') + 1);
                 }
-
-                // Try parsing sub directly as number
-                try {
-                    return Integer.parseInt(sub);
-                } catch (NumberFormatException e) {
-                    // Generate a hash-based ID from username for consistency
-                    String username = getCurrentUsername().orElse(sub);
-                    return Math.abs(username.hashCode());
-                }
+                return sub;
             }
 
             return null;
         });
+    }
+
+    public String getCurrentUserIdOrNull() {
+        return getCurrentUserId().orElse(null);
     }
 
     public Optional<String> getCurrentUsername() {
@@ -232,8 +209,8 @@ public class CasdoorAuthenticationContext {
     }
 
     public boolean hasRole(String role) {
-        String normalizedRole = role.toUpperCase().startsWith("ROLE_") ?
-                role.toUpperCase() : "ROLE_" + role.toUpperCase();
+        String normalizedRole = role.toUpperCase().startsWith("ROLE_") ? role.toUpperCase()
+                : "ROLE_" + role.toUpperCase();
         return getCurrentUserRoles().contains(normalizedRole);
     }
 
@@ -277,9 +254,8 @@ public class CasdoorAuthenticationContext {
     public void debugLogClaims() {
         getAllClaims().ifPresent(claims -> {
             log.debug("JWT Claims:");
-            claims.forEach((key, value) ->
-                    log.debug("  {} = {} (type: {})", key, value, value != null ? value.getClass().getSimpleName() : "null")
-            );
+            claims.forEach((key, value) -> log.debug("  {} = {} (type: {})", key, value,
+                    value != null ? value.getClass().getSimpleName() : "null"));
             log.debug("Extracted roles: {}", getCurrentUserRoles());
         });
     }

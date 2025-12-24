@@ -29,7 +29,7 @@ public class SseEmitterService {
     /**
      * Create SSE connection for a specific user
      */
-    public SseEmitter createEmitterForUser(Integer userId) {
+    public SseEmitter createEmitterForUser(String userId) {
         String key = getUserKey(userId);
 
         // Remove existing emitter if present
@@ -63,8 +63,7 @@ public class SseEmitterService {
                     .data(Map.of(
                             "message", "Connected to notification service",
                             "userId", userId,
-                            "timestamp", Instant.now()
-                    ));
+                            "timestamp", Instant.now()));
             emitter.send(event);
             log.info("SSE connection established for user: {}", userId);
         } catch (IOException e) {
@@ -77,7 +76,7 @@ public class SseEmitterService {
     /**
      * Subscribe to a topic for broadcast messages
      */
-    public SseEmitter subscribeToTopic(String topic, Integer userId) {
+    public SseEmitter subscribeToTopic(String topic, String userId) {
         SseEmitter emitter = new SseEmitter(DEFAULT_TIMEOUT);
 
         emitter.onCompletion(() -> {
@@ -105,8 +104,7 @@ public class SseEmitterService {
                     .data(Map.of(
                             "topic", topic,
                             "message", "Subscribed to topic: " + topic,
-                            "timestamp", Instant.now()
-                    ));
+                            "timestamp", Instant.now()));
             emitter.send(event);
             log.info("User {} subscribed to topic: {}", userId, topic);
         } catch (IOException e) {
@@ -119,7 +117,7 @@ public class SseEmitterService {
     /**
      * Send notification to a specific user
      */
-    public boolean sendToUser(Integer userId, String eventName, Object data) {
+    public boolean sendToUser(String userId, String eventName, Object data) {
         String key = getUserKey(userId);
         SseEmitter emitter = userEmitters.get(key);
 
@@ -147,13 +145,12 @@ public class SseEmitterService {
     /**
      * Send notification to a specific user with structured data
      */
-    public boolean sendNotificationToUser(Integer userId, String type, String content) {
+    public boolean sendNotificationToUser(String userId, String type, String content) {
         Map<String, Object> notification = Map.of(
                 "type", type,
                 "content", content,
                 "timestamp", Instant.now(),
-                "id", System.currentTimeMillis()
-        );
+                "id", System.currentTimeMillis());
 
         return sendToUser(userId, "notification", notification);
     }
@@ -162,6 +159,11 @@ public class SseEmitterService {
      * Broadcast to all subscribers of a topic
      */
     public void broadcastToTopic(String topic, String eventName, Object data) {
+        // If topic is "global", broadcast to all active user connections as well
+        if ("global".equalsIgnoreCase(topic)) {
+            broadcastToAll(eventName, data);
+        }
+
         List<SseEmitter> emitters = topicEmitters.get(topic);
 
         if (emitters != null && !emitters.isEmpty()) {
@@ -223,8 +225,7 @@ public class SseEmitterService {
     public void sendHeartbeat() {
         Map<String, Object> heartbeat = Map.of(
                 "timestamp", Instant.now(),
-                "type", "heartbeat"
-        );
+                "type", "heartbeat");
 
         // Send heartbeat to all user connections
         List<String> deadConnections = new ArrayList<>();
@@ -286,14 +287,14 @@ public class SseEmitterService {
     /**
      * Check if user is connected
      */
-    public boolean isUserConnected(Integer userId) {
+    public boolean isUserConnected(String userId) {
         return userEmitters.containsKey(getUserKey(userId));
     }
 
     /**
      * Disconnect a user
      */
-    public void disconnectUser(Integer userId) {
+    public void disconnectUser(String userId) {
         String key = getUserKey(userId);
         SseEmitter emitter = userEmitters.get(key);
 
@@ -308,7 +309,7 @@ public class SseEmitterService {
         }
     }
 
-    private String getUserKey(Integer userId) {
+    private String getUserKey(String userId) {
         return "user_" + userId;
     }
 

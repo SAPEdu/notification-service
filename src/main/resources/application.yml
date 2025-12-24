@@ -81,8 +81,6 @@ spring:
 
 server:
   port: ${SERVER_PORT}
-  servlet:
-    context-path: /notification-service
   tomcat:
     connection-timeout: ${TOMCAT_CONNECTION_TIMEOUT}
     max-connections: ${TOMCAT_MAX_CONNECTIONS}

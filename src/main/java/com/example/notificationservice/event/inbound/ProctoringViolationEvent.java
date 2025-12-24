@@ -18,10 +18,10 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ProctoringViolationEvent extends BaseEvent {
-    private Integer userId;
+    private String userId;
     private String username;
     private String sessionId;
     private String violationType;
     private String severity;
-    private List<Integer> proctorIds;
+    private List<String> proctorIds;
 }

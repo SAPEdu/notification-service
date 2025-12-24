@@ -17,7 +17,7 @@ public class PreferenceService {
 
     private final NotificationPreferenceRepository preferenceRepository;
 
-    public Optional<PreferenceDto> getUserPreferences(Integer userId) {
+    public Optional<PreferenceDto> getUserPreferences(String userId) {
         return preferenceRepository.findByUserId(userId).map(this::mapToDto);
     }
 
@@ -56,7 +56,7 @@ public class PreferenceService {
     }
 
     @Transactional
-    public boolean deleteUserPreferences(Integer userId) {
+    public boolean deleteUserPreferences(String userId) {
         return preferenceRepository.findByUserId(userId)
                 .map(preference -> {
                     preferenceRepository.delete(preference);

@@ -19,7 +19,7 @@ import java.util.Map;
 public class BulkNotificationRequest {
 
     @NotEmpty(message = "User IDs list cannot be empty")
-    private List<Integer> userIds;
+    private List<String> userIds;
 
     @NotBlank(message = "Notification type is required")
     private String type;
@@ -35,7 +35,8 @@ public class BulkNotificationRequest {
 
     /**
      * User-specific data: key is userId, value is map of variables for that user
-     * Example: {123: {"username": "John", "score": 85}, 124: {"username": "Jane", "score": 92}}
+     * Example: {"user123": {"username": "John", "score": 85}, "user124":
+     * {"username": "Jane", "score": 92}}
      */
-    private Map<Integer, Map<String, Object>> userSpecificData;
+    private Map<String, Map<String, Object>> userSpecificData;
 }

@@ -32,7 +32,7 @@ public class UserNotificationController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
-        Integer userId = authContext.getCurrentUserId()
+        String userId = authContext.getCurrentUserId()
                 .orElseThrow(() -> new IllegalStateException("User ID not found in token"));
 
         log.info("User {} fetching notification history, page: {}, size: {}", userId, page, size);
@@ -46,14 +46,14 @@ public class UserNotificationController {
      * Get unread notification count for the current user
      */
     @GetMapping("/unread-count")
-    public ResponseEntity<Map<String, Long>> getUnreadCount() {
-        Integer userId = authContext.getCurrentUserId()
+    public ResponseEntity<Long> getUnreadCount() {
+        String userId = authContext.getCurrentUserId()
                 .orElseThrow(() -> new IllegalStateException("User ID not found in token"));
 
         log.info("User {} fetching unread count", userId);
 
         long count = userNotificationService.getUnreadCount(userId);
-        return ResponseEntity.ok(Map.of("count", count));
+        return ResponseEntity.ok(count);
     }
 
     /**
@@ -61,31 +61,32 @@ public class UserNotificationController {
      */
     @PutMapping("/{id}/read")
     public ResponseEntity<Void> markAsRead(@PathVariable UUID id) {
-        Integer userId = authContext.getCurrentUserId()
+        String userId = authContext.getCurrentUserId()
                 .orElseThrow(() -> new IllegalStateException("User ID not found in token"));
 
         log.info("User {} marking notification {} as read", userId, id);
 
-        boolean success = userNotificationService.markAsRead(userId, id);
+        boolean updated = userNotificationService.markAsRead(userId, id);
 
-        if (success) {
+        if (updated) {
             return ResponseEntity.ok().build();
+        } else {
+            return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.notFound().build();
     }
 
     /**
      * Mark all notifications as read for the current user
      */
-    @PutMapping("/mark-all-read")
-    public ResponseEntity<Map<String, Integer>> markAllAsRead() {
-        Integer userId = authContext.getCurrentUserId()
+    @PutMapping("/read-all")
+    public ResponseEntity<Integer> markAllAsRead() {
+        String userId = authContext.getCurrentUserId()
                 .orElseThrow(() -> new IllegalStateException("User ID not found in token"));
 
         log.info("User {} marking all notifications as read", userId);
 
-        int markedCount = userNotificationService.markAllAsRead(userId);
-        return ResponseEntity.ok(Map.of("markedCount", markedCount));
+        int count = userNotificationService.markAllAsRead(userId);
+        return ResponseEntity.ok(count);
     }
 
     /**
@@ -93,16 +94,17 @@ public class UserNotificationController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteNotification(@PathVariable UUID id) {
-        Integer userId = authContext.getCurrentUserId()
+        String userId = authContext.getCurrentUserId()
                 .orElseThrow(() -> new IllegalStateException("User ID not found in token"));
 
         log.info("User {} deleting notification {}", userId, id);
 
-        boolean success = userNotificationService.deleteNotification(userId, id);
+        boolean deleted = userNotificationService.deleteNotification(userId, id);
 
-        if (success) {
+        if (deleted) {
             return ResponseEntity.noContent().build();
+        } else {
+            return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.notFound().build();
     }
 }

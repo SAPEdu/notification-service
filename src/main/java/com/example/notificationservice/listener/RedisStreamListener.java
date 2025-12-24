@@ -358,7 +358,7 @@ public class RedisStreamListener {
             data.put("severity", event.getSeverity());
 
             if (event.getProctorIds() != null && !event.getProctorIds().isEmpty()) { // ← Added null check
-                for (Integer proctorId : event.getProctorIds()) {
+                for (String proctorId : event.getProctorIds()) {
                     notificationService.processNotification(
                             "proctoring.violation",
                             proctorId,

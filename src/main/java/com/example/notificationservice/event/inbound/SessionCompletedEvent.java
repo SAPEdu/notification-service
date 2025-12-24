@@ -15,7 +15,7 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class SessionCompletedEvent extends BaseEvent {
-    private Integer userId;
+    private String userId;
     private String username;
     private String email;
     private String sessionId;

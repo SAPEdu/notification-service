@@ -25,7 +25,7 @@ public class NotificationPreference {
     private UUID id;
 
     @Column(name = "user_id", nullable = false, unique = true)
-    private Integer userId;
+    private String userId;
 
     @Column(name = "notifications_enabled")
     @Builder.Default

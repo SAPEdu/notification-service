@@ -39,12 +39,22 @@ public class NotificationPreference {
     @Builder.Default
     private Boolean pushEnabled = true;
 
+    @Column(name = "telegram_enabled")
+    @Builder.Default
+    private Boolean telegramEnabled = false;
+
+    @Column(name = "telegram_chat_id")
+    private String telegramChatId;
+
+    @Column(name = "telegram_linked_at")
+    private Instant telegramLinkedAt;
+
     /**
      * Per-notification-type settings stored as JSONB
      * Structure: { "notification_type": { "enabled": bool, "emailEnabled": bool,
-     * "pushEnabled": bool } }
+     * "pushEnabled": bool, "telegramEnabled": bool } }
      * Example: { "assessment_assigned": { "enabled": true, "emailEnabled": true,
-     * "pushEnabled": true } }
+     * "pushEnabled": true, "telegramEnabled": true } }
      */
     @Type(JsonType.class)
     @Column(columnDefinition = "jsonb")

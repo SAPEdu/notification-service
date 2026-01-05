@@ -1,10 +1,7 @@
 package com.example.notificationservice.listener;
 
 import com.example.notificationservice.enums.NotificationChannel;
-import com.example.notificationservice.event.inbound.AssessmentPublishedEvent;
-import com.example.notificationservice.event.inbound.ProctoringViolationEvent;
-import com.example.notificationservice.event.inbound.SessionCompletedEvent;
-import com.example.notificationservice.event.inbound.UserRegisteredEvent;
+import com.example.notificationservice.event.inbound.*;
 import com.example.notificationservice.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -14,7 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.stream.StreamMessageListenerContainer;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -41,6 +37,9 @@ public class RedisStreamListener {
     @Value("${app.redis.streams.proctoring-events}")
     private String proctoringEventsStream;
 
+    @Value("${app.redis.streams.notifications}")
+    private String notificationsStream;
+
     @Value("${app.redis.consumer.group-id}")
     private String consumerGroup;
 
@@ -55,9 +54,10 @@ public class RedisStreamListener {
         createConsumerGroupIfNotExists(userEventsStream);
         createConsumerGroupIfNotExists(assessmentEventsStream);
         createConsumerGroupIfNotExists(proctoringEventsStream);
+        createConsumerGroupIfNotExists(notificationsStream);
 
-        log.info("Redis Stream Listener initialized for streams: {}, {}, {}",
-                userEventsStream, assessmentEventsStream, proctoringEventsStream);
+        log.info("Redis Stream Listener initialized for streams: {}, {}, {}, {}",
+                userEventsStream, assessmentEventsStream, proctoringEventsStream, notificationsStream);
     }
 
     @PreDestroy
@@ -80,6 +80,7 @@ public class RedisStreamListener {
             pollFromStream(userEventsStream, this::handleUserEvent);
             pollFromStream(assessmentEventsStream, this::handleAssessmentEvent);
             pollFromStream(proctoringEventsStream, this::handleProctoringEvent);
+            pollFromStream(notificationsStream, this::handleNotificationEvent);
         } catch (Exception e) {
             log.error("Error polling messages from Redis streams: {}", e.getMessage(), e);
         }
@@ -142,6 +143,258 @@ public class RedisStreamListener {
         void handle(Map<Object, Object> value) throws Exception;
     }
 
+    // ==================== NOTIFICATION STREAM HANDLER (NEW) ====================
+
+    /**
+     * Handle events from the 'notifications' stream (from Assessment Service)
+     * Routes events based on 'type' field in the envelope
+     */
+    private void handleNotificationEvent(Map<Object, Object> value) {
+        try {
+            log.debug("Received notification event from Assessment Service");
+
+            // Clean and parse the event envelope
+            Map<String, Object> cleanedValue = cleanMap(value);
+
+            // Get event type from envelope
+            String eventType = (String) cleanedValue.get("type");
+            if (eventType == null) {
+                log.warn("No 'type' field in notification event: {}", cleanedValue.keySet());
+                return;
+            }
+
+            // Get data payload
+            Object dataObj = cleanedValue.get("data");
+            Map<String, Object> data;
+            if (dataObj instanceof String) {
+                data = objectMapper.readValue((String) dataObj, Map.class);
+            } else if (dataObj instanceof Map) {
+                data = (Map<String, Object>) dataObj;
+            } else {
+                // Data might be flattened in the root
+                data = cleanedValue;
+            }
+
+            log.info("📨 Processing notification event type: {}", eventType);
+
+            switch (eventType) {
+                case "assessment.published" -> handleAssessmentPublishedNew(data);
+                case "assessment.expiring" -> handleAssessmentExpiring(data);
+                case "attempt.started" -> handleAttemptStarted(data);
+                case "attempt.submitted" -> handleAttemptSubmitted(data);
+                case "attempt.graded" -> handleAttemptGraded(data);
+                default -> log.warn("⚠️ Unknown notification event type: {}", eventType);
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Failed to handle notification event: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Handle assessment.published event (new format from Assessment Service)
+     */
+    private void handleAssessmentPublishedNew(Map<String, Object> data) {
+        try {
+            AssessmentPublishedEvent event = objectMapper.convertValue(data, AssessmentPublishedEvent.class);
+            log.info("🔵 Processing assessment.published: {} for {} students",
+                    event.getAssessmentTitle(),
+                    event.getStudentIds() != null ? event.getStudentIds().size() : 0);
+
+            if (event.getStudentIds() == null || event.getStudentIds().isEmpty()) {
+                log.warn("⚠️ No student IDs in assessment.published event");
+                return;
+            }
+
+            Map<String, Object> templateData = new HashMap<>();
+            templateData.put("assessmentName", event.getAssessmentTitle());
+            templateData.put("assessmentTitle", event.getAssessmentTitle());
+            templateData.put("duration", event.getDuration());
+            templateData.put("dueDate", event.getDueDate());
+            templateData.put("groupName", event.getGroupName());
+
+            for (String studentId : event.getStudentIds()) {
+                Map<String, Object> userData = new HashMap<>(templateData);
+                userData.put("studentId", studentId);
+
+                notificationService.processNotification(
+                        "assessment.published",
+                        studentId,
+                        null, // Email will be fetched if needed
+                        userData,
+                        List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL));
+            }
+
+            log.info("✅ Sent assessment.published notifications to {} students", event.getStudentIds().size());
+
+        } catch (Exception e) {
+            log.error("❌ Failed to handle assessment.published: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Handle assessment.expiring event
+     */
+    private void handleAssessmentExpiring(Map<String, Object> data) {
+        try {
+            AssessmentExpiringEvent event = objectMapper.convertValue(data, AssessmentExpiringEvent.class);
+            log.info("⏰ Processing assessment.expiring: {} ({} hours remaining) for {} students",
+                    event.getAssessmentTitle(),
+                    event.getHoursRemaining(),
+                    event.getStudentIds() != null ? event.getStudentIds().size() : 0);
+
+            if (event.getStudentIds() == null || event.getStudentIds().isEmpty()) {
+                log.warn("⚠️ No student IDs in assessment.expiring event");
+                return;
+            }
+
+            Map<String, Object> templateData = new HashMap<>();
+            templateData.put("assessmentName", event.getAssessmentTitle());
+            templateData.put("assessmentTitle", event.getAssessmentTitle());
+            templateData.put("hoursRemaining", event.getHoursRemaining());
+            templateData.put("dueDate", event.getDueDate());
+            templateData.put("groupName", event.getGroupName());
+
+            for (String studentId : event.getStudentIds()) {
+                Map<String, Object> userData = new HashMap<>(templateData);
+                userData.put("studentId", studentId);
+
+                notificationService.processNotification(
+                        "assessment.expiring",
+                        studentId,
+                        null,
+                        userData,
+                        List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL));
+            }
+
+            log.info("✅ Sent assessment.expiring notifications to {} students", event.getStudentIds().size());
+
+        } catch (Exception e) {
+            log.error("❌ Failed to handle assessment.expiring: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Handle attempt.started event - notify teacher
+     */
+    private void handleAttemptStarted(Map<String, Object> data) {
+        try {
+            AttemptStartedEvent event = objectMapper.convertValue(data, AttemptStartedEvent.class);
+            log.info("▶️ Processing attempt.started: student {} started {} (teacher: {})",
+                    event.getStudentId(), event.getAssessmentTitle(), event.getCreatorId());
+
+            if (event.getCreatorId() == null) {
+                log.warn("⚠️ No creator_id in attempt.started event, skipping teacher notification");
+                return;
+            }
+
+            Map<String, Object> templateData = new HashMap<>();
+            templateData.put("assessmentName", event.getAssessmentTitle());
+            templateData.put("assessmentTitle", event.getAssessmentTitle());
+            templateData.put("studentId", event.getStudentId());
+            templateData.put("attemptId", event.getAttemptId());
+            templateData.put("startedAt", event.getStartedAt());
+            templateData.put("timeLimit", event.getTimeLimit());
+
+            notificationService.processNotification(
+                    "attempt.started",
+                    event.getCreatorId(),
+                    null,
+                    templateData,
+                    List.of(NotificationChannel.PUSH)); // Only push for started (optional notification)
+
+            log.info("✅ Sent attempt.started notification to teacher: {}", event.getCreatorId());
+
+        } catch (Exception e) {
+            log.error("❌ Failed to handle attempt.started: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Handle attempt.submitted event - notify teacher
+     */
+    private void handleAttemptSubmitted(Map<String, Object> data) {
+        try {
+            AttemptSubmittedEvent event = objectMapper.convertValue(data, AttemptSubmittedEvent.class);
+            log.info("📤 Processing attempt.submitted: student {} submitted {} (pending grade: {})",
+                    event.getStudentId(), event.getAssessmentTitle(), event.getIsPendingGrade());
+
+            if (event.getCreatorId() == null) {
+                log.warn("⚠️ No creator_id in attempt.submitted event, skipping teacher notification");
+                return;
+            }
+
+            Map<String, Object> templateData = new HashMap<>();
+            templateData.put("assessmentName", event.getAssessmentTitle());
+            templateData.put("assessmentTitle", event.getAssessmentTitle());
+            templateData.put("studentId", event.getStudentId());
+            templateData.put("attemptId", event.getAttemptId());
+            templateData.put("submittedAt", event.getSubmittedAt());
+            templateData.put("score", event.getScore());
+            templateData.put("maxScore", event.getMaxScore());
+            templateData.put("passed", event.getPassed());
+            templateData.put("isPendingGrade", event.getIsPendingGrade());
+
+            // Notify teacher about submission
+            List<NotificationChannel> channels = Boolean.TRUE.equals(event.getIsPendingGrade())
+                    ? List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL) // Need manual grading
+                    : List.of(NotificationChannel.PUSH); // Auto-graded, just push
+
+            notificationService.processNotification(
+                    "attempt.submitted",
+                    event.getCreatorId(),
+                    null,
+                    templateData,
+                    channels);
+
+            log.info("✅ Sent attempt.submitted notification to teacher: {}", event.getCreatorId());
+
+        } catch (Exception e) {
+            log.error("❌ Failed to handle attempt.submitted: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Handle attempt.graded event - notify student
+     */
+    private void handleAttemptGraded(Map<String, Object> data) {
+        try {
+            AttemptGradedEvent event = objectMapper.convertValue(data, AttemptGradedEvent.class);
+            log.info("📝 Processing attempt.graded: student {} scored {}/{} ({}%)",
+                    event.getStudentId(), event.getScore(), event.getMaxScore(), event.getPercentage());
+
+            if (event.getStudentId() == null) {
+                log.warn("⚠️ No student_id in attempt.graded event");
+                return;
+            }
+
+            Map<String, Object> templateData = new HashMap<>();
+            templateData.put("assessmentName", event.getAssessmentTitle());
+            templateData.put("assessmentTitle", event.getAssessmentTitle());
+            templateData.put("attemptId", event.getAttemptId());
+            templateData.put("gradedAt", event.getGradedAt());
+            templateData.put("score", event.getScore());
+            templateData.put("maxScore", event.getMaxScore());
+            templateData.put("percentage", event.getPercentage());
+            templateData.put("passed", event.getPassed());
+            templateData.put("graderId", event.getGraderId());
+
+            notificationService.processNotification(
+                    "attempt.graded",
+                    event.getStudentId(),
+                    null,
+                    templateData,
+                    List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL));
+
+            log.info("Sent attempt.graded notification to student: {}", event.getStudentId());
+
+        } catch (Exception e) {
+            log.error("Failed to handle attempt.graded: {}", e.getMessage(), e);
+        }
+    }
+
+    // ==================== LEGACY HANDLERS ====================
+
     private void handleUserEvent(Map<Object, Object> value) {
         try {
             // Convert map to clean Map<String, Object>
@@ -190,8 +443,8 @@ public class RedisStreamListener {
                 log.debug("→ Routing to handleSessionCompleted");
                 handleSessionCompleted(value);
             } else if (hasAssignedUsers) {
-                log.debug("→ Routing to handleAssessmentPublished");
-                handleAssessmentPublished(value);
+                log.debug("→ Routing to handleAssessmentPublished (legacy)");
+                handleAssessmentPublishedLegacy(value);
             } else {
                 log.warn("⚠️ Unknown assessment event type. Keys: {}", value.keySet());
             }
@@ -225,9 +478,12 @@ public class RedisStreamListener {
         }
     }
 
-    private void handleAssessmentPublished(Map<Object, Object> value) {
+    /**
+     * Legacy handler for old assessment.published format (with assignedUsers)
+     */
+    private void handleAssessmentPublishedLegacy(Map<Object, Object> value) {
         try {
-            log.info("🔵 Starting to process assessment.published event");
+            log.info("🔵 Starting to process assessment.published event (legacy format)");
 
             // Clean the map first
             Map<String, Object> cleanedValue = cleanMap(value);
@@ -243,7 +499,7 @@ public class RedisStreamListener {
                 event = objectMapper.convertValue(cleanedValue, AssessmentPublishedEvent.class);
                 log.info("✅ Parsed AssessmentPublishedEvent: assessmentId={}, name={}, users={}",
                         event.getAssessmentId(),
-                        event.getAssessmentName(),
+                        event.getAssessmentTitle(),
                         event.getAssignedUsers() != null ? event.getAssignedUsers().size() : 0);
             } catch (Exception e) {
                 log.error("❌ Failed to parse AssessmentPublishedEvent from data: {}", cleanedValue, e);
@@ -258,7 +514,7 @@ public class RedisStreamListener {
 
             // Prepare template data
             Map<String, Object> data = new HashMap<>();
-            data.put("assessmentName", event.getAssessmentName());
+            data.put("assessmentName", event.getAssessmentTitle());
             data.put("duration", event.getDuration());
             data.put("dueDate", event.getDueDate());
 
@@ -288,7 +544,7 @@ public class RedisStreamListener {
                 }
             }
 
-            log.info("🟢 Completed processing assessment.published event");
+            log.info("🟢 Completed processing assessment.published event (legacy)");
 
         } catch (Exception e) {
             log.error("❌ Failed to handle assessment published event", e);
@@ -384,11 +640,20 @@ public class RedisStreamListener {
         for (Map.Entry<Object, Object> entry : original.entrySet()) {
             String key = entry.getKey().toString();
             if (!key.equals("init") && !key.startsWith("_")) {
-                String raw = entry.getValue().toString();
+                Object rawValue = entry.getValue();
 
-                // decode all fields (or selectively per key)
-                String decoded = new String(decoder.decode(raw), StandardCharsets.UTF_8);
-                cleaned.put(key, decoded);
+                // Try to decode as base64, fall back to original value
+                try {
+                    if (rawValue instanceof String) {
+                        String decoded = new String(decoder.decode((String) rawValue), StandardCharsets.UTF_8);
+                        cleaned.put(key, decoded);
+                    } else {
+                        cleaned.put(key, rawValue);
+                    }
+                } catch (IllegalArgumentException e) {
+                    // Not base64 encoded, use as-is
+                    cleaned.put(key, rawValue);
+                }
             }
         }
         return cleaned;

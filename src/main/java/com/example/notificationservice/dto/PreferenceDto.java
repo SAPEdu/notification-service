@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -32,12 +33,17 @@ public class PreferenceDto {
     @Builder.Default
     private Boolean pushEnabled = true;
 
+    @Builder.Default
+    private Boolean telegramEnabled = false;
+
+    private String telegramChatId;
+
+    private Instant telegramLinkedAt;
+
     /**
      * Per-notification-type settings
      * Structure: { "notification_type": { "enabled": bool, "emailEnabled": bool,
-     * "pushEnabled": bool } }
-     * Example types: "assessment_assigned", "assessment_reminders",
-     * "grade_notifications", etc.
+     * "pushEnabled": bool, "telegramEnabled": bool } }
      */
     private Map<String, Map<String, Boolean>> notificationTypes;
 }

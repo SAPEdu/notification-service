@@ -23,7 +23,6 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -37,15 +36,8 @@ public class SecurityConfig {
     @Value("${app.cors.allowed-origins:http://localhost:3000}")
     private String allowedOrigins;
 
-    // ===== 0) CORS Filter - chạy TRƯỚC tất cả security filters =====
-    @Bean
-    @Order(-1)
-    public CorsFilter corsFilter() {
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        CorsConfiguration config = createCorsConfig();
-        source.registerCorsConfiguration("/**", config);
-        return new CorsFilter(source);
-    }
+    // NOTE: CORS is configured ONLY via .cors() in SecurityFilterChain
+    // Do NOT add a separate CorsFilter bean - it causes duplicate headers
 
     // ===== 1) Actuator: public health/info =====
     @Bean
@@ -58,11 +50,9 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(EndpointRequest.to("health", "info")).permitAll()
-                        .anyRequest().hasRole("ADMIN")
-                )
+                        .anyRequest().hasRole("ADMIN"))
                 .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-                );
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
 
         return http.build();
     }
@@ -93,12 +83,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/sse/**").authenticated()
                         .requestMatchers("/api/v1/auth/test/**").authenticated()
 
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .bearerTokenResolver(new SseBearerTokenResolver())
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-                );
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
 
         return http.build();
     }
@@ -135,7 +123,7 @@ public class SecurityConfig {
                 "Access-Control-Request-Method",
                 "Access-Control-Request-Headers",
                 "Cache-Control",
-                "Last-Event-ID"  // Quan trọng cho SSE reconnection
+                "Last-Event-ID" // Quan trọng cho SSE reconnection
         ));
 
         // Exposed headers - để frontend có thể đọc
@@ -144,8 +132,7 @@ public class SecurityConfig {
                 "Authorization",
                 "X-Total-Count",
                 "X-Page-Number",
-                "X-Page-Size"
-        ));
+                "X-Page-Size"));
 
         // Không cần credentials vì dùng Bearer token
         cfg.setAllowCredentials(false);
@@ -177,7 +164,8 @@ public class SecurityConfig {
                 }
             } else if (scp instanceof String s) {
                 for (String p : s.split("\\s+|,")) {
-                    if (!p.isBlank()) authorities.add(new SimpleGrantedAuthority("SCOPE_" + p.trim()));
+                    if (!p.isBlank())
+                        authorities.add(new SimpleGrantedAuthority("SCOPE_" + p.trim()));
                 }
             }
 
@@ -194,7 +182,8 @@ public class SecurityConfig {
 
             // default role
             boolean hasRole = authorities.stream().anyMatch(a -> a.getAuthority().startsWith("ROLE_"));
-            if (!hasRole) authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+            if (!hasRole)
+                authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
 
             return authorities.stream().distinct().collect(Collectors.toList());
         };
@@ -209,10 +198,13 @@ public class SecurityConfig {
         List<String> out = new ArrayList<>();
         if (rolesClaim instanceof Collection<?> coll) {
             for (Object it : coll) {
-                if (it instanceof String s) addRole(out, s);
+                if (it instanceof String s)
+                    addRole(out, s);
                 else if (it instanceof Map<?, ?> m) {
-                    Object v = getMapValueIgnoreCase(m, "name", "role", "authority", "value", "code", "key", "displayname");
-                    if (v instanceof String s) addRole(out, s);
+                    Object v = getMapValueIgnoreCase(m, "name", "role", "authority", "value", "code", "key",
+                            "displayname");
+                    if (v instanceof String s)
+                        addRole(out, s);
                 }
             }
         } else if (rolesClaim instanceof String s) {
@@ -224,26 +216,32 @@ public class SecurityConfig {
     private static Object getMapValueIgnoreCase(Map<?, ?> map, String... keys) {
         Map<String, Object> lower = new HashMap<>();
         for (Map.Entry<?, ?> e : map.entrySet()) {
-            if (e.getKey() instanceof String k) lower.put(k.toLowerCase(Locale.ROOT), e.getValue());
+            if (e.getKey() instanceof String k)
+                lower.put(k.toLowerCase(Locale.ROOT), e.getValue());
         }
         for (String k : keys) {
             Object v = lower.get(k.toLowerCase(Locale.ROOT));
-            if (v != null) return v;
+            if (v != null)
+                return v;
         }
         return null;
     }
 
     private static void addRole(List<String> out, String raw) {
         String r = normalizeRoleName(raw);
-        if (r != null) out.add(r);
+        if (r != null)
+            out.add(r);
     }
 
     private static String normalizeRoleName(String name) {
-        if (name == null) return null;
+        if (name == null)
+            return null;
         String r = name.trim();
-        if (r.isEmpty()) return null;
+        if (r.isEmpty())
+            return null;
         r = r.replaceAll("[^a-zA-Z0-9]+", "_").toUpperCase(Locale.ROOT);
-        if (!r.startsWith("ROLE_")) r = "ROLE_" + r;
+        if (!r.startsWith("ROLE_"))
+            r = "ROLE_" + r;
         return r;
     }
 }

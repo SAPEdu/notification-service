@@ -31,8 +31,11 @@ spring:
     redis:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT}
+      username: ${REDIS_USERNAME:}
       password: ${REDIS_PASSWORD:}
       timeout: ${REDIS_TIMEOUT}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
       lettuce:
         pool:
           max-active: ${REDIS_POOL_MAX_ACTIVE}

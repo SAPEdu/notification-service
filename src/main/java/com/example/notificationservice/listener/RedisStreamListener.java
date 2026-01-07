@@ -6,8 +6,8 @@ import com.example.notificationservice.service.NotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -20,13 +20,20 @@ import java.time.Instant;
 import java.util.*;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class RedisStreamListener {
 
     private final NotificationService notificationService;
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final RedisTemplate<String, String> redisStreamTemplate;
     private final ObjectMapper objectMapper;
+
+    public RedisStreamListener(NotificationService notificationService,
+            @Qualifier("redisStreamTemplate") RedisTemplate<String, String> redisStreamTemplate,
+            ObjectMapper objectMapper) {
+        this.notificationService = notificationService;
+        this.redisStreamTemplate = redisStreamTemplate;
+        this.objectMapper = objectMapper;
+    }
 
     @Value("${app.redis.streams.user-events}")
     private String userEventsStream;
@@ -88,8 +95,11 @@ public class RedisStreamListener {
 
     private void pollFromStream(String streamKey, MessageHandler handler) {
         try {
+            log.debug("Polling stream: '{}' | group: '{}' | consumer: '{}'",
+                    streamKey, consumerGroup, consumerName);
+
             // Read messages from the stream for this consumer group
-            List<MapRecord<String, Object, Object>> messages = redisTemplate.opsForStream()
+            List<MapRecord<String, Object, Object>> messages = redisStreamTemplate.opsForStream()
                     .read(
                             Consumer.from(consumerGroup, consumerName),
                             StreamReadOptions.empty().count(10).block(Duration.ofSeconds(1)),
@@ -105,35 +115,43 @@ public class RedisStreamListener {
                         handler.handle(value);
 
                         // Acknowledge the message
-                        redisTemplate.opsForStream().acknowledge(consumerGroup, message);
+                        redisStreamTemplate.opsForStream().acknowledge(streamKey, consumerGroup, message.getId());
 
                     } catch (Exception e) {
                         log.error("Error processing message from stream '{}': {}", streamKey, e.getMessage(), e);
                     }
                 }
+            } else {
+                log.trace("No new messages in stream '{}'", streamKey);
             }
         } catch (Exception e) {
-            // This is normal when no messages are available, don't log as error
-            log.trace("No messages available from stream '{}': {}", streamKey, e.getMessage());
+            // Real error - log properly for debugging
+            log.error("STREAM READ ERROR from '{}': {} (group: {}, consumer: {})",
+                    streamKey, e.getMessage(), consumerGroup, consumerName, e);
         }
     }
 
     private void createConsumerGroupIfNotExists(String streamKey) {
         try {
             // Try to create the consumer group
-            redisTemplate.opsForStream().createGroup(streamKey, consumerGroup);
+            redisStreamTemplate.opsForStream().createGroup(streamKey, consumerGroup);
             log.info("Created consumer group '{}' for stream '{}'", consumerGroup, streamKey);
         } catch (Exception e) {
-            // Group might already exist or stream doesn't exist yet, both are fine
-            log.debug("Consumer group '{}' setup for stream '{}': {}",
-                    consumerGroup, streamKey, e.getMessage());
-
-            // If stream doesn't exist, create it with a dummy message
-            try {
-                redisTemplate.opsForStream().createGroup(streamKey, ReadOffset.from("0"), consumerGroup);
-                log.info("Created stream '{}' and consumer group '{}'", streamKey, consumerGroup);
-            } catch (Exception ex) {
-                log.trace("Stream and group may already exist: {}", ex.getMessage());
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.contains("BUSYGROUP")) {
+                // Group already exists - this is fine
+                log.debug("Consumer group '{}' already exists for stream '{}'", consumerGroup, streamKey);
+            } else if (errorMsg != null && errorMsg.contains("ERR no such key")) {
+                // Stream doesn't exist, create it with offset 0
+                try {
+                    redisStreamTemplate.opsForStream().createGroup(streamKey, ReadOffset.from("0"), consumerGroup);
+                    log.info("Created stream '{}' and consumer group '{}'", streamKey, consumerGroup);
+                } catch (Exception ex) {
+                    log.error("Failed to create stream '{}' with group '{}': {}",
+                            streamKey, consumerGroup, ex.getMessage());
+                }
+            } else {
+                log.warn("Consumer group setup issue for stream '{}': {}", streamKey, errorMsg);
             }
         }
     }
@@ -151,10 +169,13 @@ public class RedisStreamListener {
      */
     private void handleNotificationEvent(Map<Object, Object> value) {
         try {
-            log.debug("Received notification event from Assessment Service");
+            log.debug("📥 RAW notification event keys: {}", value.keySet());
+            log.debug("📥 RAW notification event values: {}", value);
 
             // Clean and parse the event envelope
             Map<String, Object> cleanedValue = cleanMap(value);
+            log.debug("🧹 Cleaned event keys: {}", cleanedValue.keySet());
+            log.debug("🧹 Cleaned event: {}", cleanedValue);
 
             // Get event type from envelope
             String eventType = (String) cleanedValue.get("type");
@@ -165,15 +186,33 @@ public class RedisStreamListener {
 
             // Get data payload
             Object dataObj = cleanedValue.get("data");
+            log.debug("📦 Data object type: {}, value: {}",
+                    dataObj != null ? dataObj.getClass().getSimpleName() : "null", dataObj);
+
             Map<String, Object> data;
-            if (dataObj instanceof String) {
-                data = objectMapper.readValue((String) dataObj, Map.class);
+            if (dataObj instanceof String dataStr) {
+                log.debug("📦 Parsing data as JSON string");
+                Map<String, Object> parsed = objectMapper.readValue(dataStr, Map.class);
+
+                // Check if the parsed JSON is double-wrapped (contains another "data" field
+                // with the payload)
+                Object innerData = parsed.get("data");
+                if (innerData instanceof Map) {
+                    log.debug("📦 Found nested 'data' field, extracting inner payload");
+                    data = (Map<String, Object>) innerData;
+                } else {
+                    data = parsed;
+                }
             } else if (dataObj instanceof Map) {
+                log.debug("📦 Data is already a Map");
                 data = (Map<String, Object>) dataObj;
             } else {
                 // Data might be flattened in the root
+                log.debug("📦 Data not found, using cleaned root");
                 data = cleanedValue;
             }
+
+            log.debug("📦 Final data for handler: {}", data);
 
             log.info("📨 Processing notification event type: {}", eventType);
 
@@ -222,7 +261,7 @@ public class RedisStreamListener {
                         studentId,
                         null, // Email will be fetched if needed
                         userData,
-                        List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL));
+                        List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL, NotificationChannel.TELEGRAM));
             }
 
             log.info("✅ Sent assessment.published notifications to {} students", event.getStudentIds().size());
@@ -264,7 +303,7 @@ public class RedisStreamListener {
                         studentId,
                         null,
                         userData,
-                        List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL));
+                        List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL, NotificationChannel.TELEGRAM));
             }
 
             log.info("✅ Sent assessment.expiring notifications to {} students", event.getStudentIds().size());
@@ -337,7 +376,9 @@ public class RedisStreamListener {
 
             // Notify teacher about submission
             List<NotificationChannel> channels = Boolean.TRUE.equals(event.getIsPendingGrade())
-                    ? List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL) // Need manual grading
+                    ? List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL, NotificationChannel.TELEGRAM) // Need
+                                                                                                                 // manual
+                                                                                                                 // grading
                     : List.of(NotificationChannel.PUSH); // Auto-graded, just push
 
             notificationService.processNotification(
@@ -384,7 +425,7 @@ public class RedisStreamListener {
                     event.getStudentId(),
                     null,
                     templateData,
-                    List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL));
+                    List.of(NotificationChannel.PUSH, NotificationChannel.EMAIL, NotificationChannel.TELEGRAM));
 
             log.info("Sent attempt.graded notification to student: {}", event.getStudentId());
 

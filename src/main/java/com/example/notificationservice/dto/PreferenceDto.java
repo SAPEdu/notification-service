@@ -1,6 +1,5 @@
 package com.example.notificationservice.dto;
 
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,7 +17,9 @@ public class PreferenceDto {
 
     private UUID id;
 
-    @NotNull(message = "User ID is required")
+    /**
+     * User ID - populated from JWT token in controller, not from request body
+     */
     private String userId;
 
     /**

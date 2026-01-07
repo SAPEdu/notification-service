@@ -2,7 +2,8 @@ package com.example.notificationservice.enums;
 
 public enum TemplateType {
     EMAIL("email"),
-    PUSH("push");
+    PUSH("push"),
+    TELEGRAM("telegram");
 
     private final String value;
 

@@ -28,7 +28,7 @@ public class SseBearerTokenResolver implements BearerTokenResolver {
         if (!StringUtils.hasText(qp)) return null;
 
         // chặn payload quá dài (tránh log abuse)
-        if (qp.length() > 4096) return null;
+        if (qp.length() > 5000) return null;
 
         return qp;
     }

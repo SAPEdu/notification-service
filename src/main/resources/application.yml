@@ -31,8 +31,11 @@ spring:
     redis:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT}
+      username: ${REDIS_USERNAME:}
       password: ${REDIS_PASSWORD:}
       timeout: ${REDIS_TIMEOUT}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
       lettuce:
         pool:
           max-active: ${REDIS_POOL_MAX_ACTIVE}
@@ -129,6 +132,13 @@ app:
       assessment-events: ${REDIS_STREAM_ASSESSMENT_EVENTS}
       proctoring-events: ${REDIS_STREAM_PROCTORING_EVENTS}
       notification-events: ${REDIS_STREAM_NOTIFICATION_EVENTS}
+      notifications: ${REDIS_STREAM_NOTIFICATIONS}
     consumer:
       group-id: ${REDIS_CONSUMER_GROUP_ID}
       name: ${REDIS_CONSUMER_NAME}
+
+  telegram:
+    enabled: ${TELEGRAM_ENABLED:false}
+    bot-token: ${TELEGRAM_BOT_TOKEN:}
+    bot-username: ${TELEGRAM_BOT_USERNAME:}
+    link-token-ttl-seconds: ${TELEGRAM_LINK_TOKEN_TTL_SECONDS:300}

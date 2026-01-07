@@ -32,6 +32,7 @@ public class PreferenceService {
                 .notificationsEnabled(dto.getNotificationsEnabled())
                 .emailEnabled(dto.getEmailEnabled())
                 .pushEnabled(dto.getPushEnabled())
+                .telegramEnabled(dto.getTelegramEnabled())
                 .categories(dto.getNotificationTypes())
                 .build();
 
@@ -49,6 +50,7 @@ public class PreferenceService {
         preference.setNotificationsEnabled(dto.getNotificationsEnabled());
         preference.setEmailEnabled(dto.getEmailEnabled());
         preference.setPushEnabled(dto.getPushEnabled());
+        preference.setTelegramEnabled(dto.getTelegramEnabled());
         preference.setCategories(dto.getNotificationTypes());
 
         NotificationPreference saved = preferenceRepository.save(preference);
@@ -73,6 +75,9 @@ public class PreferenceService {
                 .notificationsEnabled(entity.getNotificationsEnabled())
                 .emailEnabled(entity.getEmailEnabled())
                 .pushEnabled(entity.getPushEnabled())
+                .telegramEnabled(entity.getTelegramEnabled())
+                .telegramChatId(entity.getTelegramChatId())
+                .telegramLinkedAt(entity.getTelegramLinkedAt())
                 .notificationTypes(entity.getCategories())
                 .build();
     }

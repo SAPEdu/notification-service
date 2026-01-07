@@ -49,8 +49,7 @@ public class SseController {
                 return ResponseEntity.ok()
                                 .header("Cache-Control", "no-store")
                                 .header("X-Accel-Buffering", "no")
-                                // Thêm CORS headers explicitly cho SSE
-                                .header("Access-Control-Allow-Origin", "*")
+                                // NOTE: CORS handled by SecurityConfig, no manual headers needed
                                 .body(emitter);
         }
 
@@ -70,7 +69,6 @@ public class SseController {
                 return ResponseEntity.ok()
                                 .header("Cache-Control", "no-store")
                                 .header("X-Accel-Buffering", "no")
-                                .header("Access-Control-Allow-Origin", "*")
                                 .body(emitter);
         }
 

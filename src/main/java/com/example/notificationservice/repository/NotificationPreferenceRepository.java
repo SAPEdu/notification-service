@@ -12,4 +12,6 @@ public interface NotificationPreferenceRepository extends JpaRepository<Notifica
     Optional<NotificationPreference> findByUserId(String userId);
 
     boolean existsByUserId(String userId);
+
+    Optional<NotificationPreference> findByTelegramChatId(String telegramChatId);
 }

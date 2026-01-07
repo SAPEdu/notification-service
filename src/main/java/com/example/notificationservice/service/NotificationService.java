@@ -38,6 +38,7 @@ public class NotificationService {
     private final SseEmitterService sseEmitterService;
     private final TemplateEngine templateEngine;
     private final RedisStreamService redisStreamService;
+    private final TelegramService telegramService;
 
     @Value("${app.notification.retry.max-attempts}")
     private int maxRetryAttempts;
@@ -254,6 +255,35 @@ public class NotificationService {
                         publishNotificationSentEvent(notification);
                     }
                     break;
+
+                case TELEGRAM:
+                    if (telegramService != null && telegramService.isAvailable()) {
+                        String chatId = getChatIdForUser(notification.getRecipientId());
+                        if (chatId != null) {
+                            log.info("Sending Telegram notification to chatId: {}", chatId);
+                            telegramService.sendMessage(chatId, notification.getContent())
+                                    .thenAccept(result -> {
+                                        if (result) {
+                                            updateNotificationStatus(notification, NotificationStatus.SENT);
+                                            publishNotificationSentEvent(notification);
+                                        } else {
+                                            handleFailedNotification(notification, "Failed to send Telegram message");
+                                        }
+                                    }).exceptionally(ex -> {
+                                        log.error("Telegram sending exception: {}", ex.getMessage());
+                                        handleFailedNotification(notification, ex.getMessage());
+                                        return null;
+                                    });
+                            sent = true;
+                        } else {
+                            log.warn("User {} has no Telegram chat ID linked", notification.getRecipientId());
+                            handleFailedNotification(notification, "No Telegram chat ID linked");
+                        }
+                    } else {
+                        log.warn("Telegram service not available");
+                        handleFailedNotification(notification, "Telegram service not available");
+                    }
+                    break;
             }
 
         } catch (Exception e) {
@@ -280,6 +310,16 @@ public class NotificationService {
 
         notificationRepository.save(notification);
         publishNotificationFailedEvent(notification, willRetry);
+    }
+
+    /**
+     * Get Telegram chat ID for a user from their preferences.
+     */
+    private String getChatIdForUser(String userId) {
+        return preferenceRepository.findByUserId(userId)
+                .filter(pref -> Boolean.TRUE.equals(pref.getTelegramEnabled()))
+                .map(NotificationPreference::getTelegramChatId)
+                .orElse(null);
     }
 
     @Scheduled(fixedDelayString = "${app.notification.retry.delay-ms}")
@@ -331,6 +371,7 @@ public class NotificationService {
             String channelKey = switch (channel) {
                 case EMAIL -> "emailEnabled";
                 case PUSH -> "pushEnabled";
+                case TELEGRAM -> "telegramEnabled";
             };
 
             if (typeSettings != null && typeSettings.containsKey(channelKey)) {
@@ -345,6 +386,8 @@ public class NotificationService {
         boolean enabled = switch (channel) {
             case EMAIL -> Boolean.TRUE.equals(pref.getEmailEnabled());
             case PUSH -> Boolean.TRUE.equals(pref.getPushEnabled());
+            case TELEGRAM -> Boolean.TRUE.equals(pref.getTelegramEnabled())
+                    && pref.getTelegramChatId() != null;
         };
 
         log.debug("Using global channel setting for '{}': {}", channel, enabled);
@@ -363,6 +406,10 @@ public class NotificationService {
             case "proctoring.violation" -> "proctoring_alert";
             case "assessment.published" -> "new_assessment_assigned";
             case "assessment.reminder" -> "assessment_reminder";
+            case "assessment.expiring" -> "assessment_expiring";
+            case "attempt.started" -> "attempt_started";
+            case "attempt.submitted" -> "attempt_submitted";
+            case "attempt.graded" -> "attempt_graded";
             case "grade.available" -> "grade_available";
             case "comment.feedback" -> "comment_feedback";
             case "system.update" -> "system_update";
@@ -374,6 +421,7 @@ public class NotificationService {
         String suffix = switch (channel) {
             case EMAIL -> "_email";
             case PUSH -> "_push";
+            case TELEGRAM -> "_telegram";
         };
 
         String templateName = baseName + suffix;
